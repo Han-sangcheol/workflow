@@ -13,7 +13,7 @@ from PySide6.QtWidgets import (
     QLabel, QFileDialog, QCheckBox, QTabWidget,
     QMessageBox, QComboBox, QGroupBox, QSplitter
 )
-from PySide6.QtCore import Qt, Slot
+from PySide6.QtCore import Qt, Slot, QTimer, QElapsedTimer
 
 from .worker import AnalysisWorker
 from .system_monitor import SystemMonitor
@@ -43,6 +43,11 @@ class MainWindow(QMainWindow):
         self.current_cleaned_text = ""
         self.selected_cleaning_model = self.settings.cleaning_model
         self.selected_writing_model = self.settings.writing_model
+        
+        # 타이머 관련 변수
+        self.elapsed_timer = QElapsedTimer()  # 경과 시간 측정
+        self.display_timer = QTimer()  # UI 업데이트용 타이머
+        self.display_timer.timeout.connect(self._update_elapsed_time)
         
         self._init_ui()
         self._setup_logging()
@@ -254,11 +259,26 @@ class MainWindow(QMainWindow):
         self.analyze_btn.setEnabled(False)
         layout.addWidget(self.analyze_btn)
         
+        # 진행률 및 시간 표시 행
+        progress_time_layout = QHBoxLayout()
+        
         # 진행률 표시
         self.progress_bar = QProgressBar()
         self.progress_bar.setRange(0, 4)
         self.progress_bar.setValue(0)
-        layout.addWidget(self.progress_bar)
+        progress_time_layout.addWidget(self.progress_bar, stretch=3)
+        
+        # 경과 시간 표시
+        self.time_label = QLabel("⏱️ 00:00")
+        self.time_label.setStyleSheet(
+            "font-size: 11pt; font-weight: bold; color: #2196F3; "
+            "padding: 5px 10px; background: #E3F2FD; border-radius: 4px;"
+        )
+        self.time_label.setMinimumWidth(80)
+        self.time_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        progress_time_layout.addWidget(self.time_label)
+        
+        layout.addLayout(progress_time_layout)
         
         # 진행 상황 텍스트
         self.status_label = QLabel("파일을 선택하세요")
@@ -402,6 +422,15 @@ class MainWindow(QMainWindow):
         # UI 비활성화
         self._set_ui_enabled(False)
         
+        # 타이머 시작
+        self.elapsed_timer.start()
+        self.display_timer.start(1000)  # 1초마다 업데이트
+        self.time_label.setText("⏱️ 00:00")
+        self.time_label.setStyleSheet(
+            "font-size: 11pt; font-weight: bold; color: #FF9800; "
+            "padding: 5px 10px; background: #FFF3E0; border-radius: 4px;"
+        )
+        
         # 이전 결과 초기화
         self.documents_text.clear()
         self.cleaned_text.clear()
@@ -471,16 +500,43 @@ class MainWindow(QMainWindow):
     @Slot(str)
     def _on_error(self, error_msg: str):
         """오류 발생"""
+        self._stop_timer()  # 타이머 중지
         QMessageBox.critical(self, "오류", error_msg)
         self.status_label.setText(f"오류: {error_msg}")
 
     @Slot()
     def _on_finished(self):
         """작업 완료"""
+        self._stop_timer()  # 타이머 중지
         self._set_ui_enabled(True)
         
         if self.current_summary and self.current_thanks:
             self.save_btn.setEnabled(True)
+    
+    def _update_elapsed_time(self):
+        """경과 시간 업데이트 (1초마다 호출)"""
+        elapsed_ms = self.elapsed_timer.elapsed()
+        elapsed_sec = elapsed_ms // 1000
+        minutes = elapsed_sec // 60
+        seconds = elapsed_sec % 60
+        self.time_label.setText(f"⏱️ {minutes:02d}:{seconds:02d}")
+    
+    def _stop_timer(self):
+        """타이머 중지 및 최종 시간 표시"""
+        self.display_timer.stop()
+        
+        # 최종 경과 시간 계산
+        elapsed_ms = self.elapsed_timer.elapsed()
+        elapsed_sec = elapsed_ms // 1000
+        minutes = elapsed_sec // 60
+        seconds = elapsed_sec % 60
+        
+        # 완료 스타일로 변경 (녹색)
+        self.time_label.setText(f"✅ {minutes:02d}:{seconds:02d}")
+        self.time_label.setStyleSheet(
+            "font-size: 11pt; font-weight: bold; color: #4CAF50; "
+            "padding: 5px 10px; background: #E8F5E9; border-radius: 4px;"
+        )
 
     @Slot()
     def _on_save(self):
