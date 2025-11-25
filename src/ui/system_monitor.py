@@ -1,15 +1,18 @@
 """
 시스템 모니터링 위젯
-CPU/GPU 사용량을 실시간으로 표시합니다.
+CPU/GPU 사용량을 실시간 그래프로 표시합니다.
 """
 
 import logging
 from typing import Optional
 
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QProgressBar
+    QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
+    QProgressBar, QGroupBox
 )
 from PySide6.QtCore import QTimer, Slot
+
+from .resource_graph import ResourceGraph, MultiResourceGraph
 
 try:
     import psutil
@@ -63,61 +66,76 @@ class SystemMonitor(QWidget):
     def _init_ui(self):
         """UI 초기화"""
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setContentsMargins(5, 5, 5, 5)
+        layout.setSpacing(5)
         
         # 제목
         title = QLabel("📊 시스템 리소스")
         title.setStyleSheet("font-weight: bold; font-size: 11pt;")
         layout.addWidget(title)
         
-        # CPU 전체 사용률
+        # === CPU/메모리 그래프 ===
+        self.cpu_mem_graph = MultiResourceGraph(
+            title="CPU & Memory",
+            max_points=60  # 60초 기록
+        )
+        self.cpu_mem_graph.add_series("CPU", "#00BCD4")   # 시안
+        self.cpu_mem_graph.add_series("MEM", "#FF9800")   # 주황
+        layout.addWidget(self.cpu_mem_graph)
+        
+        # CPU 전체 사용률 (프로그레스바)
         cpu_layout = QHBoxLayout()
-        self.cpu_label = QLabel("CPU 전체:")
+        self.cpu_label = QLabel("CPU:")
         self.cpu_bar = QProgressBar()
         self.cpu_bar.setMaximum(100)
         self.cpu_bar.setTextVisible(True)
         self.cpu_bar.setFormat("%v%")
+        self.cpu_bar.setMaximumHeight(18)
         cpu_layout.addWidget(self.cpu_label)
         cpu_layout.addWidget(self.cpu_bar)
         layout.addLayout(cpu_layout)
         
-        # CPU 코어별 사용률
-        if psutil:
-            cpu_count = psutil.cpu_count()
-            if cpu_count and cpu_count > 1:
-                # 코어가 여러 개면 개별 표시
-                self.cpu_core_bars = []
-                for i in range(min(cpu_count, 8)):  # 최대 8개 코어만 표시
-                    core_layout = QHBoxLayout()
-                    core_label = QLabel(f"  Core {i}:")
-                    core_label.setStyleSheet("font-size: 8pt;")
-                    core_bar = QProgressBar()
-                    core_bar.setMaximum(100)
-                    core_bar.setTextVisible(True)
-                    core_bar.setFormat("%v%")
-                    core_bar.setMaximumHeight(15)
-                    core_layout.addWidget(core_label)
-                    core_layout.addWidget(core_bar)
-                    layout.addLayout(core_layout)
-                    self.cpu_core_bars.append((core_label, core_bar))
-            else:
-                self.cpu_core_bars = []
-        else:
-            self.cpu_core_bars = []
-        
         # 메모리 모니터링
         mem_layout = QHBoxLayout()
-        self.mem_label = QLabel("메모리:")
+        self.mem_label = QLabel("MEM:")
         self.mem_bar = QProgressBar()
         self.mem_bar.setMaximum(100)
         self.mem_bar.setTextVisible(True)
         self.mem_bar.setFormat("%v%")
+        self.mem_bar.setMaximumHeight(18)
         mem_layout.addWidget(self.mem_label)
         mem_layout.addWidget(self.mem_bar)
         layout.addLayout(mem_layout)
         
-        # GPU 모니터링 (NVIDIA 우선)
+        # CPU 코어별 사용률 (접힘 가능)
+        self.cpu_core_bars = []
+        if psutil:
+            cpu_count = psutil.cpu_count()
+            if cpu_count and cpu_count > 1:
+                cores_group = QGroupBox(f"CPU 코어 ({cpu_count}개)")
+                cores_group.setStyleSheet("font-size: 8pt;")
+                cores_layout = QVBoxLayout(cores_group)
+                cores_layout.setSpacing(2)
+                
+                for i in range(min(cpu_count, 8)):
+                    core_layout = QHBoxLayout()
+                    core_label = QLabel(f"C{i}:")
+                    core_label.setFixedWidth(25)
+                    core_bar = QProgressBar()
+                    core_bar.setMaximum(100)
+                    core_bar.setTextVisible(True)
+                    core_bar.setFormat("%v%")
+                    core_bar.setMaximumHeight(12)
+                    core_layout.addWidget(core_label)
+                    core_layout.addWidget(core_bar)
+                    cores_layout.addLayout(core_layout)
+                    self.cpu_core_bars.append((core_label, core_bar))
+                
+                layout.addWidget(cores_group)
+        
+        # === GPU 그래프 ===
         self.gpu_bars = []
+        self.gpu_graphs = []
         gpu_detected = False
         
         # 1. NVIDIA GPU (pynvml)
@@ -126,16 +144,28 @@ class SystemMonitor(QWidget):
             logger.info(f"NVIDIA GPU {gpu_count}개 감지")
             
             for i in range(gpu_count):
+                # GPU 그래프
+                gpu_graph = ResourceGraph(
+                    title=f"GPU {i}",
+                    color="#4CAF50",  # 녹색
+                    max_points=60
+                )
+                layout.addWidget(gpu_graph)
+                self.gpu_graphs.append(gpu_graph)
+                
+                # GPU 프로그레스바
                 gpu_layout = QHBoxLayout()
                 gpu_label = QLabel(f"GPU {i}:")
                 gpu_bar = QProgressBar()
                 gpu_bar.setMaximum(100)
                 gpu_bar.setTextVisible(True)
                 gpu_bar.setFormat("%v%")
+                gpu_bar.setMaximumHeight(18)
                 gpu_layout.addWidget(gpu_label)
                 gpu_layout.addWidget(gpu_bar)
                 layout.addLayout(gpu_layout)
                 self.gpu_bars.append((gpu_label, gpu_bar, "nvidia"))
+            
             gpu_detected = True
         
         # 2. GPUtil 폴백 (다른 GPU)
@@ -143,16 +173,28 @@ class SystemMonitor(QWidget):
             try:
                 gpus = GPUtil.getGPUs()
                 for i, gpu in enumerate(gpus):
+                    # GPU 그래프
+                    gpu_graph = ResourceGraph(
+                        title=f"GPU {i} ({gpu.name[:10]})",
+                        color="#4CAF50",
+                        max_points=60
+                    )
+                    layout.addWidget(gpu_graph)
+                    self.gpu_graphs.append(gpu_graph)
+                    
+                    # GPU 프로그레스바
                     gpu_layout = QHBoxLayout()
                     gpu_label = QLabel(f"GPU {i}:")
                     gpu_bar = QProgressBar()
                     gpu_bar.setMaximum(100)
                     gpu_bar.setTextVisible(True)
                     gpu_bar.setFormat("%v%")
+                    gpu_bar.setMaximumHeight(18)
                     gpu_layout.addWidget(gpu_label)
                     gpu_layout.addWidget(gpu_bar)
                     layout.addLayout(gpu_layout)
                     self.gpu_bars.append((gpu_label, gpu_bar, gpu.name))
+                
                 gpu_detected = True
             except Exception as e:
                 logger.debug(f"GPUtil GPU 초기화 실패: {e}")
@@ -207,6 +249,9 @@ class SystemMonitor(QWidget):
             self.cpu_bar.setValue(int(cpu_percent))
             self._update_bar_color(self.cpu_bar, cpu_percent)
             
+            # CPU/메모리 그래프 업데이트
+            self.cpu_mem_graph.add_value(0, cpu_percent)
+            
             # CPU 코어별 사용률
             if self.cpu_core_bars:
                 try:
@@ -224,10 +269,13 @@ class SystemMonitor(QWidget):
             mem_percent = mem.percent
             self.mem_bar.setValue(int(mem_percent))
             self.mem_label.setText(
-                f"메모리: {mem.used // (1024**3)}GB / "
+                f"MEM: {mem.used // (1024**3)}GB / "
                 f"{mem.total // (1024**3)}GB"
             )
             self._update_bar_color(self.mem_bar, mem_percent)
+            
+            # 메모리 그래프 업데이트
+            self.cpu_mem_graph.add_value(1, mem_percent)
             
             # GPU 사용률 (NVIDIA 우선)
             if self.gpu_bars:
@@ -244,6 +292,10 @@ class SystemMonitor(QWidget):
                                     f"{mem_used}MB / {mem_total}MB"
                                 )
                                 self._update_bar_color(bar, util)
+                                
+                                # GPU 그래프 업데이트
+                                if i < len(self.gpu_graphs):
+                                    self.gpu_graphs[i].add_value(util)
                     except Exception as e:
                         logger.debug(f"NVIDIA GPU 정보 읽기 실패: {e}")
                 
@@ -261,6 +313,10 @@ class SystemMonitor(QWidget):
                                     f"{int(gpu.memoryUsed)}MB / {int(gpu.memoryTotal)}MB"
                                 )
                                 self._update_bar_color(bar, gpu_percent)
+                                
+                                # GPU 그래프 업데이트
+                                if i < len(self.gpu_graphs):
+                                    self.gpu_graphs[i].add_value(gpu_percent)
                     except Exception as e:
                         logger.debug(f"GPUtil GPU 정보 읽기 실패: {e}")
         

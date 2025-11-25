@@ -12,6 +12,13 @@ try:
 except ImportError:
     requests = None
 
+from .prompt_config import (
+    SYSTEM_PROMPT,
+    CLEANING_PROMPT,
+    SUMMARY_PROMPT,
+    THANKS_PROMPT
+)
+
 logger = logging.getLogger(__name__)
 
 
@@ -153,7 +160,11 @@ class OllamaClient:
                 json={
                     "model": self.model,
                     "prompt": prompt,
-                    "stream": True
+                    "system": SYSTEM_PROMPT,
+                    "stream": True,
+                    "options": {
+                        "temperature": 0.3  # 일관된 출력을 위해 낮은 온도 설정
+                    }
                 },
                 stream=True,
                 timeout=self.timeout
@@ -203,54 +214,14 @@ class OllamaClient:
         return self._generate(prompt, progress_callback)
 
     def _create_cleaning_prompt(self, documents_text: str) -> str:
-        """텍스트 정리 프롬프트"""
-        return f"""다음은 PDF/DOCX 파일에서 추출한 원본 텍스트입니다.
-이 텍스트를 읽기 쉽게 정리하고 구조화해주세요.
-
-요구사항:
-1. 불필요한 공백, 줄바꿈, 특수문자 제거
-2. 날짜, 작성자, 주요 내용을 명확히 구분
-3. 각 팀원별로 내용 분리
-4. 업무 항목을 구조화 (진행 업무, 완료 업무, 이슈 등)
-5. 원본 내용은 유지하되 가독성 향상
-6. 한국어로 작성
-
-원본 텍스트:
-{documents_text}
-
-정리된 텍스트:"""
+        """텍스트 정리 프롬프트 (prompt_config.py 사용)"""
+        return CLEANING_PROMPT.format(documents_text=documents_text)
 
     def _create_summary_prompt(self, documents_text: str) -> str:
-        """통합 회의록 생성 프롬프트"""
-        return f"""다음은 정리된 팀원들의 일일 업무일지입니다. 
-이 내용을 바탕으로 팀 전체의 통합 회의록을 작성해주세요.
-
-요구사항:
-1. 각 팀원의 주요 업무 내용을 간결하게 정리
-2. 팀 전체의 진행 상황과 성과를 요약
-3. 주요 이슈나 특이사항이 있다면 언급
-4. 전문적이고 간결한 톤 유지
-5. 한국어로 작성
-
-업무일지:
-{documents_text}
-
-통합 회의록:"""
+        """통합 회의록 생성 프롬프트 (prompt_config.py 사용)"""
+        return SUMMARY_PROMPT.format(cleaned_text=documents_text)
 
     def _create_thanks_prompt(self, documents_text: str) -> str:
-        """감사 인사 생성 프롬프트"""
-        return f"""다음은 팀원들의 일일 업무일지입니다.
-각 팀원의 업무 내용을 바탕으로 개인별 감사 인사를 작성해주세요.
-
-요구사항:
-1. 각 팀원의 구체적인 업무 내용을 언급
-2. 진심 어린 감사의 마음을 전달
-3. 각 팀원당 2-3문장 정도
-4. 따뜻하고 격려하는 톤 유지
-5. 한국어로 작성
-
-업무일지:
-{documents_text}
-
-감사 인사:"""
+        """감사 인사 생성 프롬프트 (prompt_config.py 사용)"""
+        return THANKS_PROMPT.format(cleaned_text=documents_text)
 
