@@ -1,0 +1,23 @@
+# 업무일지 AI 분석 시스템 의존성
+# 본 프로젝트는 가상환경(venv)에서 실행됩니다
+
+# GUI 프레임워크
+PySide6>=6.6.0
+
+# 문서 파싱
+PyMuPDF>=1.23.0  # PDF 파싱
+python-docx>=1.1.0  # DOCX 파싱
+
+# AI 통신
+requests>=2.31.0  # Ollama API 통신
+
+# 시스템 모니터링
+psutil>=5.9.0  # CPU/메모리 모니터링
+setuptools>=65.0.0  # Python 3.13에서 distutils 대체
+gputil>=1.4.0  # GPU 모니터링 (선택사항, NVIDIA 전용)
+pynvml>=11.5.0  # NVIDIA GPU 모니터링 (더 안정적)
+
+# 테스트
+pytest>=7.4.0
+pytest-qt>=4.2.0  # PySide6 테스트 지원
+

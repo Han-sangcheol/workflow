@@ -1,0 +1,14 @@
+[run]
+source = src
+include = 
+    * */*.py
+    * */*.py
+    * */*.py
+    * */*.py
+    * */*.py
+    * */*.py
+omit = 
+    * test_*
+    * */test_*
+    * */tests/*
+    * */tests/*
