@@ -30,6 +30,7 @@ class AnalysisWorker(QThread):
     def __init__(
         self,
         file_paths: List[str],
+        pdf_extraction_mode: str = "smart",
         cleaning_model: str = "llama3.2",
         writing_model: str = "llama3.2"
     ):
@@ -38,19 +39,22 @@ class AnalysisWorker(QThread):
         
         Args:
             file_paths: 분석할 파일 경로 리스트
+            pdf_extraction_mode: PDF 추출 모드 (simple, smart, layout)
             cleaning_model: 텍스트 정리용 AI 모델
             writing_model: 회의록/감사인사 작성용 AI 모델
         """
         super().__init__()
         self.file_paths = file_paths
+        self.pdf_extraction_mode = pdf_extraction_mode
         self.doc_parser = DocumentParser()
         self.cleaning_client = OllamaClient(model=cleaning_model)
         self.writing_client = OllamaClient(model=writing_model)
         self._is_cancelled = False
         
         logger.info(
-            f"워커 초기화: 정리={cleaning_model}, "
-            f"작성={writing_model}, 파일={len(file_paths)}개"
+            f"워커 초기화: PDF모드={pdf_extraction_mode}, "
+            f"정리={cleaning_model}, 작성={writing_model}, "
+            f"파일={len(file_paths)}개"
         )
 
     def run(self):
@@ -157,7 +161,10 @@ class AnalysisWorker(QThread):
                 f"파일 {i}/{len(self.file_paths)} 읽기 중..."
             )
             
-            text = self.doc_parser.parse_file(file_path)
+            text = self.doc_parser.parse_file(
+                file_path,
+                pdf_extraction_mode=self.pdf_extraction_mode
+            )
             if text:
                 all_text.append(f"=== 파일: {file_path} ===\n{text}")
         

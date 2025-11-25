@@ -142,6 +142,32 @@ class MainWindow(QMainWindow):
         button_layout.addStretch()
         layout.addLayout(button_layout)
         
+        # PDF 추출 모드 선택
+        pdf_mode_layout = QHBoxLayout()
+        pdf_mode_label = QLabel("📄 PDF 추출 모드:")
+        pdf_mode_layout.addWidget(pdf_mode_label)
+        
+        self.pdf_mode_combo = QComboBox()
+        self.pdf_mode_combo.addItems([
+            "smart (블록 정렬 - 권장)",
+            "layout (레이아웃 보존)",
+            "simple (기본 추출)"
+        ])
+        self.pdf_mode_combo.setCurrentIndex(0)  # smart 기본값
+        self.pdf_mode_combo.setToolTip(
+            "smart: 표 형식 문서에 최적화\n"
+            "layout: 복잡한 레이아웃 보존\n"
+            "simple: 빠른 기본 추출"
+        )
+        pdf_mode_layout.addWidget(self.pdf_mode_combo)
+        
+        pdf_mode_info = QLabel("(표 형식 문서는 smart 권장)")
+        pdf_mode_info.setStyleSheet("color: gray; font-size: 9pt;")
+        pdf_mode_layout.addWidget(pdf_mode_info)
+        
+        pdf_mode_layout.addStretch()
+        layout.addLayout(pdf_mode_layout)
+        
         # 파일 목록
         self.file_list = QListWidget()
         self.file_list.setMinimumHeight(60)
@@ -367,9 +393,14 @@ class MainWindow(QMainWindow):
         self.thanks_text.clear()
         self.progress_bar.setValue(0)
         
-        # 워커 스레드 시작 (선택된 모델들 전달)
+        # PDF 추출 모드 파싱 (콤보박스 텍스트에서 모드명만 추출)
+        pdf_mode_text = self.pdf_mode_combo.currentText()
+        pdf_extraction_mode = pdf_mode_text.split(' ')[0]  # "smart", "layout", "simple"
+        
+        # 워커 스레드 시작 (선택된 모델들과 PDF 추출 모드 전달)
         self.worker = AnalysisWorker(
             self._selected_files,
+            pdf_extraction_mode=pdf_extraction_mode,
             cleaning_model=self.selected_cleaning_model,
             writing_model=self.selected_writing_model
         )

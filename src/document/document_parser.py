@@ -20,12 +20,17 @@ class DocumentParser:
         self.pdf_parser = PDFParser()
         self.docx_parser = DOCXParser()
 
-    def parse_file(self, file_path: str) -> Optional[str]:
+    def parse_file(
+        self, 
+        file_path: str, 
+        pdf_extraction_mode: str = "smart"
+    ) -> Optional[str]:
         """
         파일 확장자에 따라 적절한 파서로 텍스트 추출
         
         Args:
             file_path: 문서 파일 경로
+            pdf_extraction_mode: PDF 추출 모드 (simple, smart, layout)
             
         Returns:
             추출된 텍스트 (실패 시 None)
@@ -34,7 +39,10 @@ class DocumentParser:
         extension = path.suffix.lower()
 
         if extension == ".pdf":
-            return self.pdf_parser.parse_file(file_path)
+            return self.pdf_parser.parse_file(
+                file_path, 
+                extraction_mode=pdf_extraction_mode
+            )
         elif extension in [".docx", ".doc"]:
             return self.docx_parser.parse_file(file_path)
         else:
