@@ -21,6 +21,7 @@ from .styles import APP_STYLE
 from ..utils.file_selector import FileSelector
 from ..utils.output_generator import OutputGenerator
 from ..utils.ollama_manager import OllamaManager
+from ..utils.settings_manager import get_settings
 from ..ai.ollama_client import OllamaClient
 
 logger = logging.getLogger(__name__)
@@ -34,16 +35,18 @@ class MainWindow(QMainWindow):
         self.file_selector = FileSelector()
         self.output_generator = OutputGenerator()
         self.ollama_manager = OllamaManager()
+        self.settings = get_settings()  # 설정 관리자
         self.worker = None
         self.current_summary = ""
         self.current_thanks = ""
         self.current_documents_text = ""
         self.current_cleaned_text = ""
-        self.selected_cleaning_model = "llama3.2"  # 정리용 모델
-        self.selected_writing_model = "llama3.2"  # 작성용 모델
+        self.selected_cleaning_model = self.settings.cleaning_model
+        self.selected_writing_model = self.settings.writing_model
         
         self._init_ui()
         self._setup_logging()
+        self._apply_saved_settings()  # 저장된 설정 적용
         self._check_and_start_ollama()
         self._load_available_models()
 
@@ -313,13 +316,20 @@ class MainWindow(QMainWindow):
     @Slot()
     def _on_folder_select(self):
         """폴더 선택 핸들러"""
+        # 마지막 사용 폴더에서 시작
+        start_folder = self.settings.last_folder_path or ""
+        
         folder = QFileDialog.getExistingDirectory(
             self,
-            "업무일지 폴더 선택"
+            "업무일지 폴더 선택",
+            start_folder
         )
         
         if not folder:
             return
+        
+        # 폴더 경로 저장
+        self.settings.last_folder_path = folder
         
         if self.auto_check.isChecked():
             # 오늘 날짜로 자동 검색
@@ -333,14 +343,20 @@ class MainWindow(QMainWindow):
     @Slot()
     def _on_manual_select(self):
         """파일 직접 선택 핸들러"""
+        # 마지막 사용 폴더에서 시작
+        start_folder = self.settings.last_folder_path or ""
+        
         files, _ = QFileDialog.getOpenFileNames(
             self,
             "업무일지 파일 선택",
-            "",
+            start_folder,
             "문서 파일 (*.pdf *.docx *.doc)"
         )
         
         if files:
+            # 선택한 파일의 폴더 저장
+            from pathlib import Path
+            self.settings.last_folder_path = str(Path(files[0]).parent)
             self._update_file_list(files)
 
     def _find_all_supported_files(self, folder: str) -> List[str]:
@@ -472,13 +488,20 @@ class MainWindow(QMainWindow):
         if not self.current_summary or not self.current_thanks:
             return
         
+        # 마지막 저장 경로에서 시작
+        start_folder = self.settings.last_save_path or self.settings.last_folder_path or ""
+        
         folder = QFileDialog.getExistingDirectory(
             self,
-            "저장 위치 선택"
+            "저장 위치 선택",
+            start_folder
         )
         
         if not folder:
             return
+        
+        # 저장 경로 저장
+        self.settings.last_save_path = folder
         
         # 파일명 생성
         summary_file = Path(folder) / \
@@ -536,18 +559,25 @@ class MainWindow(QMainWindow):
             self.cleaning_model_combo.addItems(models)
             self.writing_model_combo.addItems(models)
             
-            # 기본 모델 선택
-            default_model = None
-            if "llama3.2:latest" in models:
-                default_model = "llama3.2:latest"
-            elif "llama3.2" in models:
-                default_model = "llama3.2"
-            elif models:
-                default_model = models[0]
+            # 저장된 모델 또는 기본 모델 선택
+            saved_cleaning = self.settings.cleaning_model
+            saved_writing = self.settings.writing_model
             
-            if default_model:
-                self.cleaning_model_combo.setCurrentText(default_model)
-                self.writing_model_combo.setCurrentText(default_model)
+            # 정리용 모델 선택
+            if saved_cleaning in models:
+                self.cleaning_model_combo.setCurrentText(saved_cleaning)
+            elif "llama3.2:latest" in models:
+                self.cleaning_model_combo.setCurrentText("llama3.2:latest")
+            elif models:
+                self.cleaning_model_combo.setCurrentIndex(0)
+            
+            # 작성용 모델 선택
+            if saved_writing in models:
+                self.writing_model_combo.setCurrentText(saved_writing)
+            elif "llama3.2:latest" in models:
+                self.writing_model_combo.setCurrentText("llama3.2:latest")
+            elif models:
+                self.writing_model_combo.setCurrentIndex(0)
             
             self.model_info_label.setText(
                 f"✅ {len(models)}개 모델 사용 가능"
@@ -564,6 +594,15 @@ class MainWindow(QMainWindow):
             ]
             self.cleaning_model_combo.addItems(default_models)
             self.writing_model_combo.addItems(default_models)
+            
+            # 저장된 모델 선택 시도
+            saved_cleaning = self.settings.cleaning_model
+            saved_writing = self.settings.writing_model
+            if saved_cleaning in default_models:
+                self.cleaning_model_combo.setCurrentText(saved_cleaning)
+            if saved_writing in default_models:
+                self.writing_model_combo.setCurrentText(saved_writing)
+            
             self.model_info_label.setText(
                 "⚠️ Ollama 연결 실패 또는 모델 없음"
             )
@@ -575,12 +614,14 @@ class MainWindow(QMainWindow):
     def _on_cleaning_model_changed(self, model_name: str):
         """정리용 모델 선택 변경"""
         self.selected_cleaning_model = model_name
+        self.settings.cleaning_model = model_name  # 설정 저장
         logger.info(f"선택된 정리용 AI 모델: {model_name}")
 
     @Slot(str)
     def _on_writing_model_changed(self, model_name: str):
         """작성용 모델 선택 변경"""
         self.selected_writing_model = model_name
+        self.settings.writing_model = model_name  # 설정 저장
         logger.info(f"선택된 작성용 AI 모델: {model_name}")
 
     def _check_and_start_ollama(self):
@@ -621,6 +662,22 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event):
         """창 닫기 이벤트"""
+        # 윈도우 크기/위치 저장
+        self.settings.set_window_geometry(
+            width=self.width(),
+            height=self.height(),
+            x=self.x(),
+            y=self.y()
+        )
+        
+        # PDF 추출 모드 저장
+        self.settings.pdf_extraction_mode = self.pdf_mode_combo.currentIndex()
+        
+        # 오늘 날짜 자동 검색 체크박스 저장
+        self.settings.auto_search_today = self.auto_check.isChecked()
+        
+        logger.info("설정 저장 완료")
+        
         # 시스템 모니터 중지
         if hasattr(self, 'system_monitor'):
             self.system_monitor.stop_monitoring()
@@ -637,4 +694,23 @@ class MainWindow(QMainWindow):
             level=logging.INFO,
             format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
         )
+    
+    def _apply_saved_settings(self):
+        """저장된 설정 적용"""
+        # 윈도우 크기/위치 적용
+        geometry = self.settings.get_window_geometry()
+        if geometry["width"] and geometry["height"]:
+            self.resize(geometry["width"], geometry["height"])
+        if geometry["x"] is not None and geometry["y"] is not None:
+            self.move(geometry["x"], geometry["y"])
+        
+        # PDF 추출 모드 적용
+        pdf_mode_idx = self.settings.pdf_extraction_mode
+        if 0 <= pdf_mode_idx < self.pdf_mode_combo.count():
+            self.pdf_mode_combo.setCurrentIndex(pdf_mode_idx)
+        
+        # 오늘 날짜 자동 검색 체크박스 적용
+        self.auto_check.setChecked(self.settings.auto_search_today)
+        
+        logger.info("저장된 설정 적용 완료")
 

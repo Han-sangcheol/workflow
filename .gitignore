@@ -26,6 +26,9 @@ uv.lock
 회의록_*.docx
 감사인사_*.docx
 
+# 사용자 설정 (개인 설정 유지)
+settings.json
+
 # OS
 .DS_Store
 Thumbs.db
