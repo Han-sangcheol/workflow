@@ -296,14 +296,23 @@ class MainWindow(QMainWindow):
         
         layout.addLayout(progress_time_layout)
         
-        # 스텝별 시간 표시
-        self.step_times_label = QLabel("Step 1: --:-- | Step 2: --:-- | Step 3: --:-- | Step 4: --:--")
+        # 스텝별 시간 표시 (실제 소요 시간)
+        self.step_times_label = QLabel("Step 1: --:-- | Step 2: --:-- | Step 3: --:-- | Step 4: --:-- | Step 5: --:--")
         self.step_times_label.setStyleSheet(
             "font-size: 9pt; color: #666; background: #F5F5F5; "
             "padding: 4px 8px; border-radius: 3px;"
         )
         self.step_times_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self.step_times_label)
+        
+        # 예상 시간 표시
+        self.estimate_label = QLabel("📊 예상 시간: (이전 분석 이력 없음)")
+        self.estimate_label.setStyleSheet(
+            "font-size: 9pt; color: #1976D2; background: #E3F2FD; "
+            "padding: 4px 8px; border-radius: 3px;"
+        )
+        self.estimate_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(self.estimate_label)
         
         # 진행 상황 텍스트
         self.status_label = QLabel("파일을 선택하세요")
@@ -506,6 +515,9 @@ class MainWindow(QMainWindow):
         self.step_times = {1: 0.0, 2: 0.0, 3: 0.0, 4: 0.0, 5: 0.0}
         self.step_times_label.setText("Step 1: --:-- | Step 2: --:-- | Step 3: --:-- | Step 4: --:-- | Step 5: --:--")
         
+        # 예상 시간 계산 및 표시
+        self._update_estimate_display()
+        
         # 이전 결과 초기화
         self.documents_text.clear()
         self.cleaned_text.clear()
@@ -528,6 +540,7 @@ class MainWindow(QMainWindow):
         self.worker.progress_updated.connect(self._on_progress)
         self.worker.step_completed.connect(self._on_step_completed)
         self.worker.step_time_recorded.connect(self._on_step_time_recorded)
+        self.worker.step_analysis_recorded.connect(self._on_step_analysis_recorded)
         self.worker.documents_parsed.connect(self._on_documents_parsed)
         self.worker.text_cleaned.connect(self._on_text_cleaned)
         self.worker.summary_ready.connect(self._on_summary_ready)
@@ -553,6 +566,49 @@ class MainWindow(QMainWindow):
         self.step_times[step] = elapsed_seconds
         self._update_step_times_display()
     
+    @Slot(int, int, float)
+    def _on_step_analysis_recorded(self, step: int, text_length: int, elapsed_seconds: float):
+        """분석 이력 저장 (예상 시간 계산용)"""
+        self.settings.add_analysis_record(step, text_length, elapsed_seconds)
+    
+    def _update_estimate_display(self):
+        """예상 시간 표시 업데이트"""
+        # 현재 텍스트 양 추정 (이전 분석 결과가 있으면 그것 사용, 없으면 파일 수 기반)
+        if hasattr(self, 'current_documents_text') and self.current_documents_text:
+            text_length = len(self.current_documents_text)
+        elif hasattr(self, '_selected_files'):
+            # 파일당 평균 약 1000자로 추정
+            text_length = len(self._selected_files) * 1000
+        else:
+            self.estimate_label.setText("📊 예상 시간: (파일 선택 후 표시)")
+            return
+        
+        # 예상 시간 계산
+        estimates = self.settings.estimate_total_time(text_length)
+        
+        if estimates["total"] is None:
+            self.estimate_label.setText("📊 예상 시간: (이전 분석 이력 없음 - 첫 분석 후 표시)")
+            return
+        
+        # 스텝별 예상 시간 문자열 생성
+        def format_est(seconds):
+            if seconds is None:
+                return "--:--"
+            minutes = int(seconds) // 60
+            secs = int(seconds) % 60
+            return f"{minutes:02d}:{secs:02d}"
+        
+        step_estimates = []
+        for i in range(1, 6):
+            est = estimates.get(f"step_{i}")
+            step_estimates.append(f"S{i}:{format_est(est)}")
+        
+        total_est = format_est(estimates["total"])
+        
+        self.estimate_label.setText(
+            f"📊 예상: {' | '.join(step_estimates)} → 총 {total_est}"
+        )
+    
     def _update_step_times_display(self):
         """스텝별 시간 표시 업데이트"""
         def format_time(seconds: float) -> str:
@@ -575,6 +631,8 @@ class MainWindow(QMainWindow):
         self.documents_text.setPlainText(documents_text)
         # 원본 텍스트 탭으로 자동 전환
         self.tab_widget.setCurrentIndex(0)
+        # 실제 텍스트 양으로 예상 시간 업데이트
+        self._update_estimate_display()
 
     @Slot(str)
     def _on_text_cleaned(self, cleaned_text: str):

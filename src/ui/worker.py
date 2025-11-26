@@ -22,6 +22,7 @@ class AnalysisWorker(QThread):
     progress_updated = Signal(str)  # 진행 상황 메시지
     step_completed = Signal(int)  # 단계 완료 (1,2,3,4,5)
     step_time_recorded = Signal(int, float)  # 스텝별 소요 시간 (스텝 번호, 초)
+    step_analysis_recorded = Signal(int, int, float)  # 분석 이력 기록 (스텝 번호, 텍스트 길이, 소요 시간)
     documents_parsed = Signal(str)  # 문서 파싱 완료 (원본 텍스트)
     text_cleaned = Signal(str)  # 텍스트 정리 완료
     summary_ready = Signal(str)  # 회의록 준비 완료
@@ -79,9 +80,11 @@ class AnalysisWorker(QThread):
                 return
             
             # 원본 텍스트 전달
+            documents_len = len(documents_text)
             self.documents_parsed.emit(documents_text)
             self.step_completed.emit(1)
             self.step_time_recorded.emit(1, step1_time)
+            self.step_analysis_recorded.emit(1, documents_len, step1_time)
             
             if self._is_cancelled:
                 return
@@ -104,9 +107,11 @@ class AnalysisWorker(QThread):
                 )
                 return
             
+            cleaned_len = len(cleaned_text)
             self.text_cleaned.emit(cleaned_text)
             self.step_completed.emit(2)
             self.step_time_recorded.emit(2, step2_time)
+            self.step_analysis_recorded.emit(2, documents_len, step2_time)
             
             if self._is_cancelled:
                 return
@@ -132,6 +137,7 @@ class AnalysisWorker(QThread):
             self.summary_ready.emit(summary)
             self.step_completed.emit(3)
             self.step_time_recorded.emit(3, step3_time)
+            self.step_analysis_recorded.emit(3, cleaned_len, step3_time)
             
             if self._is_cancelled:
                 return
@@ -155,6 +161,7 @@ class AnalysisWorker(QThread):
             self.thanks_ready.emit(thanks)
             self.step_completed.emit(4)
             self.step_time_recorded.emit(4, step4_time)
+            self.step_analysis_recorded.emit(4, cleaned_len, step4_time)
             
             if self._is_cancelled:
                 return
@@ -178,6 +185,7 @@ class AnalysisWorker(QThread):
             self.devstatus_ready.emit(devstatus)
             self.step_completed.emit(5)
             self.step_time_recorded.emit(5, step5_time)
+            self.step_analysis_recorded.emit(5, cleaned_len, step5_time)
             
             self.progress_updated.emit("모든 작업 완료!")
             

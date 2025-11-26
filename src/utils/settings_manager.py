@@ -27,6 +27,15 @@ DEFAULT_SETTINGS = {
     "summary_prompt": "",
     "thanks_prompt": "",
     "devstatus_prompt": "",
+    # 분석 이력 (예상 시간 계산용) - 최근 10개 기록 유지
+    # 형식: {"step_N": [{"text_len": int, "seconds": float}, ...]}
+    "analysis_history": {
+        "step_1": [],  # 문서 파싱
+        "step_2": [],  # 텍스트 정리
+        "step_3": [],  # 회의록 생성
+        "step_4": [],  # 감사인사 생성
+        "step_5": [],  # 개발현황 생성
+    },
 }
 
 
@@ -239,6 +248,98 @@ class SettingsManager:
             "thanks_prompt": thanks,
             "devstatus_prompt": devstatus,
         })
+    
+    # === 분석 이력 관리 (예상 시간 계산용) ===
+    
+    MAX_HISTORY_COUNT = 10  # 스텝당 최대 이력 수
+    
+    def add_analysis_record(self, step: int, text_length: int, elapsed_seconds: float) -> None:
+        """
+        분석 이력 추가
+        
+        Args:
+            step: 스텝 번호 (1~5)
+            text_length: 처리한 텍스트 길이 (문자 수)
+            elapsed_seconds: 소요 시간 (초)
+        """
+        history = self.get("analysis_history", DEFAULT_SETTINGS["analysis_history"])
+        step_key = f"step_{step}"
+        
+        if step_key not in history:
+            history[step_key] = []
+        
+        # 새 기록 추가
+        history[step_key].append({
+            "text_len": text_length,
+            "seconds": elapsed_seconds
+        })
+        
+        # 최대 개수 유지 (오래된 것부터 삭제)
+        if len(history[step_key]) > self.MAX_HISTORY_COUNT:
+            history[step_key] = history[step_key][-self.MAX_HISTORY_COUNT:]
+        
+        self.set("analysis_history", history)
+        logger.debug(f"분석 이력 추가: step={step}, len={text_length}, time={elapsed_seconds:.1f}s")
+    
+    def get_analysis_history(self, step: int) -> list:
+        """특정 스텝의 분석 이력 조회"""
+        history = self.get("analysis_history", DEFAULT_SETTINGS["analysis_history"])
+        step_key = f"step_{step}"
+        return history.get(step_key, [])
+    
+    def estimate_step_time(self, step: int, text_length: int) -> Optional[float]:
+        """
+        스텝별 예상 소요 시간 계산
+        
+        Args:
+            step: 스텝 번호 (1~5)
+            text_length: 처리할 텍스트 길이 (문자 수)
+            
+        Returns:
+            예상 소요 시간 (초), 이력이 없으면 None
+        """
+        records = self.get_analysis_history(step)
+        
+        if not records:
+            return None
+        
+        # 평균 처리 속도 계산 (초당 문자 수)
+        total_chars = sum(r["text_len"] for r in records)
+        total_seconds = sum(r["seconds"] for r in records)
+        
+        if total_seconds <= 0 or total_chars <= 0:
+            return None
+        
+        chars_per_second = total_chars / total_seconds
+        
+        # 예상 시간 계산
+        estimated = text_length / chars_per_second
+        
+        return estimated
+    
+    def estimate_total_time(self, text_length: int) -> Dict[str, Optional[float]]:
+        """
+        전체 분석 예상 시간 계산
+        
+        Args:
+            text_length: 입력 텍스트 길이
+            
+        Returns:
+            {"step_1": float, ..., "step_5": float, "total": float}
+        """
+        result = {}
+        total = 0.0
+        has_estimate = False
+        
+        for step in range(1, 6):
+            est = self.estimate_step_time(step, text_length)
+            result[f"step_{step}"] = est
+            if est is not None:
+                total += est
+                has_estimate = True
+        
+        result["total"] = total if has_estimate else None
+        return result
 
 
 # 전역 설정 인스턴스
