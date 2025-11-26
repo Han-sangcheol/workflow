@@ -3,12 +3,28 @@
 애플리케이션 설정을 JSON 파일로 저장/로드합니다.
 """
 
+import sys
+import os
 import json
 import logging
 from pathlib import Path
 from typing import Any, Dict, Optional
 
 logger = logging.getLogger(__name__)
+
+
+def get_app_data_dir() -> Path:
+    """애플리케이션 데이터 디렉토리 반환 (설정, 로그, DB 파일 저장용)"""
+    if sys.platform == 'win32':
+        # Windows: %LOCALAPPDATA%\WorkflowAnalyzer
+        base_dir = Path(os.environ.get('LOCALAPPDATA', Path.home() / 'AppData' / 'Local'))
+    else:
+        # Linux/Mac: ~/.local/share/WorkflowAnalyzer
+        base_dir = Path.home() / '.local' / 'share'
+    
+    app_dir = base_dir / 'WorkflowAnalyzer'
+    app_dir.mkdir(parents=True, exist_ok=True)
+    return app_dir
 
 # 기본 설정값
 DEFAULT_SETTINGS = {
@@ -58,10 +74,10 @@ class SettingsManager:
         self._load_settings()
     
     def _get_settings_path(self) -> Path:
-        """설정 파일 경로 반환 (프로젝트 폴더 내)"""
-        # 프로젝트 루트 폴더에 설정 파일 저장
-        project_root = Path(__file__).parent.parent.parent
-        settings_file = project_root / self.SETTINGS_FILE
+        """설정 파일 경로 반환 (사용자 데이터 폴더)"""
+        # 사용자 데이터 폴더에 설정 파일 저장 (Program Files 권한 문제 방지)
+        app_data_dir = get_app_data_dir()
+        settings_file = app_data_dir / self.SETTINGS_FILE
         return settings_file
     
     def _load_settings(self) -> None:

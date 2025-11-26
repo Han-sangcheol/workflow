@@ -1,0 +1,9 @@
+# 빌드 의존성
+# PyInstaller를 사용한 실행 파일 빌드에 필요한 패키지
+
+# PyInstaller - Python 애플리케이션을 실행 파일로 변환
+pyinstaller>=6.0.0
+
+# 선택사항: 더 작은 실행 파일을 위한 최적화 도구
+# pyinstaller-hooks-contrib>=2024.0  # 추가 훅 지원 (필요시 활성화)
+

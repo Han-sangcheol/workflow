@@ -3,6 +3,8 @@
 SQLite를 사용하여 업무일지 분석 결과를 저장하고 조회합니다.
 """
 
+import sys
+import os
 import sqlite3
 import logging
 from pathlib import Path
@@ -11,6 +13,18 @@ from typing import Optional, List, Dict, Any
 from contextlib import contextmanager
 
 logger = logging.getLogger(__name__)
+
+
+def get_app_data_dir() -> Path:
+    """애플리케이션 데이터 디렉토리 반환"""
+    if sys.platform == 'win32':
+        base_dir = Path(os.environ.get('LOCALAPPDATA', Path.home() / 'AppData' / 'Local'))
+    else:
+        base_dir = Path.home() / '.local' / 'share'
+    
+    app_dir = base_dir / 'WorkflowAnalyzer'
+    app_dir.mkdir(parents=True, exist_ok=True)
+    return app_dir
 
 
 class DatabaseManager:
@@ -23,14 +37,14 @@ class DatabaseManager:
         초기화
         
         Args:
-            db_path: 데이터베이스 파일 경로 (None이면 프로젝트 루트에 생성)
+            db_path: 데이터베이스 파일 경로 (None이면 사용자 데이터 폴더에 생성)
         """
         if db_path:
             self.db_path = Path(db_path)
         else:
-            # 프로젝트 루트에 DB 파일 생성
-            project_root = Path(__file__).parent.parent.parent
-            self.db_path = project_root / self.DB_FILE
+            # 사용자 데이터 폴더에 DB 파일 생성 (Program Files 권한 문제 방지)
+            app_data_dir = get_app_data_dir()
+            self.db_path = app_data_dir / self.DB_FILE
         
         self._init_database()
     
@@ -79,6 +93,9 @@ class DatabaseManager:
                 )
             """)
             
+            # 기존 프로젝트 테이블에 새 컬럼 추가 (마이그레이션)
+            self._migrate_projects_table(cursor)
+            
             # 일일 업무 기록 테이블
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS daily_tasks (
@@ -125,6 +142,29 @@ class DatabaseManager:
             """)
             
             logger.info(f"데이터베이스 초기화 완료: {self.db_path}")
+    
+    def _migrate_projects_table(self, cursor):
+        """기존 프로젝트 테이블에 새 컬럼 추가 (마이그레이션)"""
+        # 현재 테이블 컬럼 확인
+        cursor.execute("PRAGMA table_info(projects)")
+        columns = {row[1] for row in cursor.fetchall()}
+        
+        # 없는 컬럼 추가
+        migrations = [
+            ("target_progress", "INTEGER DEFAULT 100"),
+            ("current_progress", "INTEGER DEFAULT 0"),
+            ("target_date", "DATE"),
+            ("priority", "TEXT DEFAULT '보통'"),
+            ("status", "TEXT DEFAULT '진행중'"),
+        ]
+        
+        for col_name, col_type in migrations:
+            if col_name not in columns:
+                try:
+                    cursor.execute(f"ALTER TABLE projects ADD COLUMN {col_name} {col_type}")
+                    logger.info(f"프로젝트 테이블에 '{col_name}' 컬럼 추가됨")
+                except Exception as e:
+                    logger.debug(f"컬럼 추가 스킵 (이미 존재): {col_name}")
     
     # === 팀원 관리 ===
     
