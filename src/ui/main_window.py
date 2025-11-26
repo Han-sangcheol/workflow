@@ -350,12 +350,44 @@ class MainWindow(QMainWindow):
         return self.tab_widget
 
     def _create_save_button(self) -> QWidget:
-        """저장 버튼 생성"""
+        """저장 및 재분석 버튼 영역 생성"""
+        container = QWidget()
+        layout = QHBoxLayout(container)
+        layout.setContentsMargins(0, 5, 0, 0)
+        
+        # 개별 재분석 버튼들
+        reanalyze_label = QLabel("🔄 재분석:")
+        reanalyze_label.setStyleSheet("color: #666; font-size: 9pt;")
+        layout.addWidget(reanalyze_label)
+        
+        self.reanalyze_clean_btn = QPushButton("Step 2: 텍스트 정리")
+        self.reanalyze_clean_btn.setToolTip("원본 텍스트를 다시 정리합니다")
+        self.reanalyze_clean_btn.clicked.connect(self._on_reanalyze_clean)
+        self.reanalyze_clean_btn.setEnabled(False)
+        layout.addWidget(self.reanalyze_clean_btn)
+        
+        self.reanalyze_summary_btn = QPushButton("Step 3: 회의록")
+        self.reanalyze_summary_btn.setToolTip("정리된 텍스트로 회의록을 다시 생성합니다")
+        self.reanalyze_summary_btn.clicked.connect(self._on_reanalyze_summary)
+        self.reanalyze_summary_btn.setEnabled(False)
+        layout.addWidget(self.reanalyze_summary_btn)
+        
+        self.reanalyze_thanks_btn = QPushButton("Step 4: 감사인사")
+        self.reanalyze_thanks_btn.setToolTip("정리된 텍스트로 감사인사를 다시 생성합니다")
+        self.reanalyze_thanks_btn.clicked.connect(self._on_reanalyze_thanks)
+        self.reanalyze_thanks_btn.setEnabled(False)
+        layout.addWidget(self.reanalyze_thanks_btn)
+        
+        layout.addStretch()
+        
+        # 저장 버튼
         self.save_btn = QPushButton("💾 결과 저장")
         self.save_btn.setStyleSheet("font-size: 11pt; padding: 8px;")
         self.save_btn.clicked.connect(self._on_save)
         self.save_btn.setEnabled(False)
-        return self.save_btn
+        layout.addWidget(self.save_btn)
+        
+        return container
 
     @Slot()
     def _on_folder_select(self):
@@ -560,6 +592,13 @@ class MainWindow(QMainWindow):
         self._stop_timer()  # 타이머 중지
         self._set_ui_enabled(True)
         
+        # 재분석 버튼 활성화 (데이터가 있는 경우)
+        if self.current_documents_text:
+            self.reanalyze_clean_btn.setEnabled(True)
+        if self.current_cleaned_text:
+            self.reanalyze_summary_btn.setEnabled(True)
+            self.reanalyze_thanks_btn.setEnabled(True)
+        
         if self.current_summary and self.current_thanks:
             self.save_btn.setEnabled(True)
     
@@ -587,6 +626,118 @@ class MainWindow(QMainWindow):
             "font-size: 11pt; font-weight: bold; color: #4CAF50; "
             "padding: 5px 10px; background: #E8F5E9; border-radius: 4px;"
         )
+
+    @Slot()
+    def _on_reanalyze_clean(self):
+        """정리된 텍스트 재분석"""
+        if not self.current_documents_text:
+            QMessageBox.warning(self, "경고", "원본 텍스트가 없습니다. 먼저 전체 분석을 실행해주세요.")
+            return
+        
+        self._start_single_step_analysis("clean")
+    
+    @Slot()
+    def _on_reanalyze_summary(self):
+        """통합 회의록 재분석"""
+        if not self.current_cleaned_text:
+            QMessageBox.warning(self, "경고", "정리된 텍스트가 없습니다. 먼저 전체 분석을 실행해주세요.")
+            return
+        
+        self._start_single_step_analysis("summary")
+    
+    @Slot()
+    def _on_reanalyze_thanks(self):
+        """감사인사 재분석"""
+        if not self.current_cleaned_text:
+            QMessageBox.warning(self, "경고", "정리된 텍스트가 없습니다. 먼저 전체 분석을 실행해주세요.")
+            return
+        
+        self._start_single_step_analysis("thanks")
+    
+    def _start_single_step_analysis(self, step_type: str):
+        """개별 단계 재분석 시작"""
+        # UI 비활성화
+        self._set_ui_enabled(False)
+        self.reanalyze_clean_btn.setEnabled(False)
+        self.reanalyze_summary_btn.setEnabled(False)
+        self.reanalyze_thanks_btn.setEnabled(False)
+        
+        # 타이머 시작
+        self.elapsed_timer.start()
+        self.display_timer.start(1000)
+        self.time_label.setStyleSheet(
+            "font-size: 11pt; font-weight: bold; color: #333; "
+            "padding: 5px 10px; background: #FFF3E0; border-radius: 4px;"
+        )
+        
+        # 개별 단계 워커 생성 및 실행
+        from src.ui.single_step_worker import SingleStepWorker
+        
+        cleaning_model = self.cleaning_model_combo.currentText()
+        writing_model = self.writing_model_combo.currentText()
+        
+        self.single_worker = SingleStepWorker(
+            step_type=step_type,
+            source_text=self.current_documents_text if step_type == "clean" else self.current_cleaned_text,
+            cleaning_model=cleaning_model,
+            writing_model=writing_model
+        )
+        
+        # 시그널 연결
+        self.single_worker.finished.connect(self._on_single_step_finished)
+        self.single_worker.error.connect(self._on_error)
+        self.single_worker.progress.connect(self._on_progress)
+        
+        if step_type == "clean":
+            self.single_worker.result_ready.connect(self._on_single_clean_result)
+            self.status_label.setText("Step 2: 텍스트 정리 재분석 중...")
+        elif step_type == "summary":
+            self.single_worker.result_ready.connect(self._on_single_summary_result)
+            self.status_label.setText("Step 3: 회의록 재생성 중...")
+        elif step_type == "thanks":
+            self.single_worker.result_ready.connect(self._on_single_thanks_result)
+            self.status_label.setText("Step 4: 감사인사 재생성 중...")
+        
+        self.single_worker.start()
+    
+    @Slot(str)
+    def _on_single_clean_result(self, result: str):
+        """텍스트 정리 재분석 결과"""
+        self.current_cleaned_text = result
+        self.cleaned_text.setPlainText(result)
+        self.tab_widget.setCurrentIndex(1)
+    
+    @Slot(str)
+    def _on_single_summary_result(self, result: str):
+        """회의록 재분석 결과"""
+        self.current_summary = result
+        self.summary_text.setPlainText(result)
+        self.tab_widget.setCurrentIndex(2)
+    
+    @Slot(str)
+    def _on_single_thanks_result(self, result: str):
+        """감사인사 재분석 결과"""
+        self.current_thanks = result
+        self.thanks_text.setPlainText(result)
+        self.tab_widget.setCurrentIndex(3)
+    
+    @Slot()
+    def _on_single_step_finished(self):
+        """개별 단계 분석 완료"""
+        self._stop_timer()
+        self._set_ui_enabled(True)
+        
+        # 재분석 버튼 다시 활성화
+        if self.current_documents_text:
+            self.reanalyze_clean_btn.setEnabled(True)
+        if self.current_cleaned_text:
+            self.reanalyze_summary_btn.setEnabled(True)
+            self.reanalyze_thanks_btn.setEnabled(True)
+        
+        if self.current_summary and self.current_thanks:
+            self.save_btn.setEnabled(True)
+        
+        self.status_label.setText("재분석 완료!")
 
     @Slot()
     def _on_save(self):

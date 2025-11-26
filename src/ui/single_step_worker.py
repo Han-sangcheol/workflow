@@ -1,0 +1,109 @@
+"""
+개별 분석 단계를 실행하는 워커 클래스
+- clean: 원본 텍스트 → 정리된 텍스트
+- summary: 정리된 텍스트 → 통합 회의록
+- thanks: 정리된 텍스트 → 감사 인사
+"""
+import logging
+from PySide6.QtCore import QThread, Signal, Slot
+
+from src.ai.ollama_client import OllamaClient
+
+logger = logging.getLogger(__name__)
+
+
+class SingleStepWorker(QThread):
+    """개별 분석 단계 실행 워커"""
+    
+    # 시그널 정의
+    progress = Signal(str)          # 진행 상황 메시지
+    result_ready = Signal(str)      # 분석 결과
+    error = Signal(str)             # 오류 메시지
+    finished = Signal()             # 완료 시그널
+    
+    def __init__(
+        self,
+        step_type: str,
+        source_text: str,
+        cleaning_model: str = "gemma3:4b",
+        writing_model: str = "gemma3:4b"
+    ):
+        """
+        Args:
+            step_type: 실행할 단계 ("clean", "summary", "thanks")
+            source_text: 입력 텍스트
+            cleaning_model: 텍스트 정리용 AI 모델
+            writing_model: 회의록/감사인사 작성용 AI 모델
+        """
+        super().__init__()
+        self.step_type = step_type
+        self.source_text = source_text
+        self.cleaning_model = cleaning_model
+        self.writing_model = writing_model
+    
+    def run(self):
+        """워커 실행"""
+        try:
+            if self.step_type == "clean":
+                self._run_clean()
+            elif self.step_type == "summary":
+                self._run_summary()
+            elif self.step_type == "thanks":
+                self._run_thanks()
+            else:
+                self.error.emit(f"알 수 없는 단계: {self.step_type}")
+                return
+        except Exception as e:
+            logger.error(f"단일 단계 분석 오류: {e}")
+            self.error.emit(f"분석 중 오류 발생: {str(e)}")
+        finally:
+            self.finished.emit()
+    
+    def _run_clean(self):
+        """텍스트 정리 실행"""
+        self.progress.emit("Step 2: 텍스트 정리 중...")
+        
+        client = OllamaClient(model=self.cleaning_model)
+        if not client.check_connection():
+            self.error.emit("Ollama 서버에 연결할 수 없습니다.")
+            return
+        
+        result = client.clean_and_organize(self.source_text)
+        if result:
+            self.result_ready.emit(result)
+            self.progress.emit("텍스트 정리 완료!")
+        else:
+            self.error.emit("텍스트 정리에 실패했습니다.")
+    
+    def _run_summary(self):
+        """회의록 생성 실행"""
+        self.progress.emit("Step 3: 회의록 생성 중...")
+        
+        client = OllamaClient(model=self.writing_model)
+        if not client.check_connection():
+            self.error.emit("Ollama 서버에 연결할 수 없습니다.")
+            return
+        
+        result = client.generate_summary(self.source_text)
+        if result:
+            self.result_ready.emit(result)
+            self.progress.emit("회의록 생성 완료!")
+        else:
+            self.error.emit("회의록 생성에 실패했습니다.")
+    
+    def _run_thanks(self):
+        """감사인사 생성 실행"""
+        self.progress.emit("Step 4: 감사인사 생성 중...")
+        
+        client = OllamaClient(model=self.writing_model)
+        if not client.check_connection():
+            self.error.emit("Ollama 서버에 연결할 수 없습니다.")
+            return
+        
+        result = client.generate_thanks(self.source_text)
+        if result:
+            self.result_ready.emit(result)
+            self.progress.emit("감사인사 생성 완료!")
+        else:
+            self.error.emit("감사인사 생성에 실패했습니다.")
+
