@@ -128,6 +128,24 @@ class OllamaClient:
         prompt = self._create_thanks_prompt(documents_text)
         return self._generate(prompt, progress_callback)
 
+    def generate_devstatus(
+        self,
+        documents_text: str,
+        progress_callback: Optional[Callable[[str], None]] = None
+    ) -> Optional[str]:
+        """
+        오전/오후 개발 현황 생성
+        
+        Args:
+            documents_text: 팀원들의 업무일지 텍스트
+            progress_callback: 진행 상황 콜백 함수
+            
+        Returns:
+            생성된 개발 현황 (실패 시 None)
+        """
+        prompt = self._create_devstatus_prompt(documents_text)
+        return self._generate(prompt, progress_callback)
+
     def _generate(
         self,
         prompt: str,
@@ -221,5 +239,10 @@ class OllamaClient:
     def _create_thanks_prompt(self, documents_text: str) -> str:
         """감사 인사 생성 프롬프트 (사용자 설정 또는 기본값)"""
         prompt_template = get_prompt("thanks")
+        return prompt_template.format(cleaned_text=documents_text)
+
+    def _create_devstatus_prompt(self, documents_text: str) -> str:
+        """개발 현황 생성 프롬프트 (사용자 설정 또는 기본값)"""
+        prompt_template = get_prompt("devstatus")
         return prompt_template.format(cleaned_text=documents_text)
 

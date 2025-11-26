@@ -50,6 +50,8 @@ class SingleStepWorker(QThread):
                 self._run_summary()
             elif self.step_type == "thanks":
                 self._run_thanks()
+            elif self.step_type == "devstatus":
+                self._run_devstatus()
             else:
                 self.error.emit(f"알 수 없는 단계: {self.step_type}")
                 return
@@ -64,7 +66,7 @@ class SingleStepWorker(QThread):
         self.progress.emit("Step 2: 텍스트 정리 중...")
         
         client = OllamaClient(model=self.cleaning_model)
-        if not client.check_connection():
+        if not client.is_available():
             self.error.emit("Ollama 서버에 연결할 수 없습니다.")
             return
         
@@ -80,7 +82,7 @@ class SingleStepWorker(QThread):
         self.progress.emit("Step 3: 회의록 생성 중...")
         
         client = OllamaClient(model=self.writing_model)
-        if not client.check_connection():
+        if not client.is_available():
             self.error.emit("Ollama 서버에 연결할 수 없습니다.")
             return
         
@@ -96,7 +98,7 @@ class SingleStepWorker(QThread):
         self.progress.emit("Step 4: 감사인사 생성 중...")
         
         client = OllamaClient(model=self.writing_model)
-        if not client.check_connection():
+        if not client.is_available():
             self.error.emit("Ollama 서버에 연결할 수 없습니다.")
             return
         
@@ -106,4 +108,20 @@ class SingleStepWorker(QThread):
             self.progress.emit("감사인사 생성 완료!")
         else:
             self.error.emit("감사인사 생성에 실패했습니다.")
+    
+    def _run_devstatus(self):
+        """개발 현황 생성 실행"""
+        self.progress.emit("Step 5: 개발 현황 생성 중...")
+        
+        client = OllamaClient(model=self.writing_model)
+        if not client.is_available():
+            self.error.emit("Ollama 서버에 연결할 수 없습니다.")
+            return
+        
+        result = client.generate_devstatus(self.source_text)
+        if result:
+            self.result_ready.emit(result)
+            self.progress.emit("개발 현황 생성 완료!")
+        else:
+            self.error.emit("개발 현황 생성에 실패했습니다.")
 

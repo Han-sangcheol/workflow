@@ -47,6 +47,7 @@ class MainWindow(QMainWindow):
         self.current_cleaned_text = ""
         self.selected_cleaning_model = self.settings.cleaning_model
         self.selected_writing_model = self.settings.writing_model
+        self.current_devstatus = ""  # 개발 현황 저장
         
         # 타이머 관련 변수
         self.elapsed_timer = QElapsedTimer()  # 경과 시간 측정
@@ -54,7 +55,7 @@ class MainWindow(QMainWindow):
         self.display_timer.timeout.connect(self._update_elapsed_time)
         
         # 스텝별 시간 저장
-        self.step_times = {1: 0.0, 2: 0.0, 3: 0.0, 4: 0.0}
+        self.step_times = {1: 0.0, 2: 0.0, 3: 0.0, 4: 0.0, 5: 0.0}
         
         self._init_ui()
         self._setup_logging()
@@ -279,7 +280,7 @@ class MainWindow(QMainWindow):
         
         # 진행률 표시
         self.progress_bar = QProgressBar()
-        self.progress_bar.setRange(0, 4)
+        self.progress_bar.setRange(0, 5)
         self.progress_bar.setValue(0)
         progress_time_layout.addWidget(self.progress_bar, stretch=3)
         
@@ -347,6 +348,14 @@ class MainWindow(QMainWindow):
         )
         self.tab_widget.addTab(self.thanks_text, "4️⃣ 감사 인사")
         
+        # 탭5: 개발 현황
+        self.devstatus_text = QTextEdit()
+        self.devstatus_text.setReadOnly(True)
+        self.devstatus_text.setPlaceholderText(
+            "Step 5: AI가 생성한 오전/오후 개발 현황"
+        )
+        self.tab_widget.addTab(self.devstatus_text, "5️⃣ 개발 현황")
+        
         return self.tab_widget
 
     def _create_save_button(self) -> QWidget:
@@ -377,6 +386,12 @@ class MainWindow(QMainWindow):
         self.reanalyze_thanks_btn.clicked.connect(self._on_reanalyze_thanks)
         self.reanalyze_thanks_btn.setEnabled(False)
         layout.addWidget(self.reanalyze_thanks_btn)
+        
+        self.reanalyze_devstatus_btn = QPushButton("Step 5: 개발현황")
+        self.reanalyze_devstatus_btn.setToolTip("정리된 텍스트로 개발 현황을 다시 생성합니다")
+        self.reanalyze_devstatus_btn.clicked.connect(self._on_reanalyze_devstatus)
+        self.reanalyze_devstatus_btn.setEnabled(False)
+        layout.addWidget(self.reanalyze_devstatus_btn)
         
         layout.addStretch()
         
@@ -488,14 +503,15 @@ class MainWindow(QMainWindow):
         )
         
         # 스텝별 시간 초기화
-        self.step_times = {1: 0.0, 2: 0.0, 3: 0.0, 4: 0.0}
-        self.step_times_label.setText("Step 1: --:-- | Step 2: --:-- | Step 3: --:-- | Step 4: --:--")
+        self.step_times = {1: 0.0, 2: 0.0, 3: 0.0, 4: 0.0, 5: 0.0}
+        self.step_times_label.setText("Step 1: --:-- | Step 2: --:-- | Step 3: --:-- | Step 4: --:-- | Step 5: --:--")
         
         # 이전 결과 초기화
         self.documents_text.clear()
         self.cleaned_text.clear()
         self.summary_text.clear()
         self.thanks_text.clear()
+        self.devstatus_text.clear()
         self.progress_bar.setValue(0)
         
         # PDF 추출 모드 파싱 (콤보박스 텍스트에서 모드명만 추출)
@@ -516,6 +532,7 @@ class MainWindow(QMainWindow):
         self.worker.text_cleaned.connect(self._on_text_cleaned)
         self.worker.summary_ready.connect(self._on_summary_ready)
         self.worker.thanks_ready.connect(self._on_thanks_ready)
+        self.worker.devstatus_ready.connect(self._on_devstatus_ready)
         self.worker.error_occurred.connect(self._on_error)
         self.worker.finished.connect(self._on_finished)
         self.worker.start()
@@ -547,7 +564,7 @@ class MainWindow(QMainWindow):
         
         times_text = " | ".join([
             f"Step {i}: {format_time(self.step_times[i])}"
-            for i in range(1, 5)
+            for i in range(1, 6)
         ])
         self.step_times_label.setText(times_text)
 
@@ -580,6 +597,12 @@ class MainWindow(QMainWindow):
         self.thanks_text.setPlainText(thanks)
 
     @Slot(str)
+    def _on_devstatus_ready(self, devstatus: str):
+        """개발 현황 준비 완료"""
+        self.current_devstatus = devstatus
+        self.devstatus_text.setPlainText(devstatus)
+
+    @Slot(str)
     def _on_error(self, error_msg: str):
         """오류 발생"""
         self._stop_timer()  # 타이머 중지
@@ -598,6 +621,7 @@ class MainWindow(QMainWindow):
         if self.current_cleaned_text:
             self.reanalyze_summary_btn.setEnabled(True)
             self.reanalyze_thanks_btn.setEnabled(True)
+            self.reanalyze_devstatus_btn.setEnabled(True)
         
         if self.current_summary and self.current_thanks:
             self.save_btn.setEnabled(True)
@@ -654,6 +678,15 @@ class MainWindow(QMainWindow):
         
         self._start_single_step_analysis("thanks")
     
+    @Slot()
+    def _on_reanalyze_devstatus(self):
+        """개발 현황 재분석"""
+        if not self.current_cleaned_text:
+            QMessageBox.warning(self, "경고", "정리된 텍스트가 없습니다. 먼저 전체 분석을 실행해주세요.")
+            return
+        
+        self._start_single_step_analysis("devstatus")
+    
     def _start_single_step_analysis(self, step_type: str):
         """개별 단계 재분석 시작"""
         # UI 비활성화
@@ -661,6 +694,7 @@ class MainWindow(QMainWindow):
         self.reanalyze_clean_btn.setEnabled(False)
         self.reanalyze_summary_btn.setEnabled(False)
         self.reanalyze_thanks_btn.setEnabled(False)
+        self.reanalyze_devstatus_btn.setEnabled(False)
         
         # 타이머 시작
         self.elapsed_timer.start()
@@ -697,6 +731,9 @@ class MainWindow(QMainWindow):
         elif step_type == "thanks":
             self.single_worker.result_ready.connect(self._on_single_thanks_result)
             self.status_label.setText("Step 4: 감사인사 재생성 중...")
+        elif step_type == "devstatus":
+            self.single_worker.result_ready.connect(self._on_single_devstatus_result)
+            self.status_label.setText("Step 5: 개발 현황 재생성 중...")
         
         self.single_worker.start()
     
@@ -721,6 +758,13 @@ class MainWindow(QMainWindow):
         self.thanks_text.setPlainText(result)
         self.tab_widget.setCurrentIndex(3)
     
+    @Slot(str)
+    def _on_single_devstatus_result(self, result: str):
+        """개발 현황 재분석 결과"""
+        self.current_devstatus = result
+        self.devstatus_text.setPlainText(result)
+        self.tab_widget.setCurrentIndex(4)
+    
     @Slot()
     def _on_single_step_finished(self):
         """개별 단계 분석 완료"""
@@ -733,6 +777,7 @@ class MainWindow(QMainWindow):
         if self.current_cleaned_text:
             self.reanalyze_summary_btn.setEnabled(True)
             self.reanalyze_thanks_btn.setEnabled(True)
+            self.reanalyze_devstatus_btn.setEnabled(True)
         
         if self.current_summary and self.current_thanks:
             self.save_btn.setEnabled(True)

@@ -20,12 +20,13 @@ class AnalysisWorker(QThread):
 
     # 신호 정의
     progress_updated = Signal(str)  # 진행 상황 메시지
-    step_completed = Signal(int)  # 단계 완료 (1,2,3,4)
+    step_completed = Signal(int)  # 단계 완료 (1,2,3,4,5)
     step_time_recorded = Signal(int, float)  # 스텝별 소요 시간 (스텝 번호, 초)
     documents_parsed = Signal(str)  # 문서 파싱 완료 (원본 텍스트)
     text_cleaned = Signal(str)  # 텍스트 정리 완료
     summary_ready = Signal(str)  # 회의록 준비 완료
     thanks_ready = Signal(str)  # 감사 인사 준비 완료
+    devstatus_ready = Signal(str)  # 개발 현황 준비 완료
     error_occurred = Signal(str)  # 오류 발생
     finished = Signal()  # 작업 완료
 
@@ -154,6 +155,29 @@ class AnalysisWorker(QThread):
             self.thanks_ready.emit(thanks)
             self.step_completed.emit(4)
             self.step_time_recorded.emit(4, step4_time)
+            
+            if self._is_cancelled:
+                return
+            
+            # Step 5: 개발 현황 생성
+            self.progress_updated.emit(
+                "Step 5: AI로 개발 현황 생성 중..."
+            )
+            
+            step5_start = time.time()
+            devstatus = self.writing_client.generate_devstatus(
+                cleaned_text,  # 정리된 텍스트 사용
+                progress_callback=self._ai_progress_callback
+            )
+            step5_time = time.time() - step5_start
+            
+            if not devstatus:
+                self.error_occurred.emit("개발 현황 생성 실패")
+                return
+            
+            self.devstatus_ready.emit(devstatus)
+            self.step_completed.emit(5)
+            self.step_time_recorded.emit(5, step5_time)
             
             self.progress_updated.emit("모든 작업 완료!")
             

@@ -39,6 +39,11 @@ class PromptEditorDialog(QDialog):
             "description": "팀원별 감사 인사를 생성하는 프롬프트",
             "tab_name": "3️⃣ 감사 인사",
         },
+        "devstatus": {
+            "title": "개발 현황 프롬프트",
+            "description": "오전/오후 개발 현황 메시지를 생성하는 프롬프트",
+            "tab_name": "4️⃣ 개발 현황",
+        },
     }
     
     def __init__(self, parent=None):
@@ -269,7 +274,8 @@ class PromptEditorDialog(QDialog):
         self.settings.set_all_prompts(
             cleaning=prompts.get("cleaning", ""),
             summary=prompts.get("summary", ""),
-            thanks=prompts.get("thanks", "")
+            thanks=prompts.get("thanks", ""),
+            devstatus=prompts.get("devstatus", "")
         )
         
         logger.info("프롬프트 저장 완료")
