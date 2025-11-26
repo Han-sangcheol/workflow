@@ -52,6 +52,18 @@ if errorlevel 1 (
     echo [완료] PyInstaller 설치 완료
 )
 
+REM 아이콘 생성 (Pillow 필요)
+echo.
+echo [2.5/4] 아이콘 생성 중...
+if not exist "resources\icon.ico" (
+    "%VENV_PYTHON%" -c "import PIL" >nul 2>&1
+    if errorlevel 1 (
+        echo [!] Pillow 설치 중...
+        "%VENV_PYTHON%" -m pip install Pillow
+    )
+    "%VENV_PYTHON%" build\create_icon.py
+)
+
 REM 빌드 실행
 echo.
 echo [3/4] 빌드 시작...

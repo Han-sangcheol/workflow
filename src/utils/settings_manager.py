@@ -28,7 +28,12 @@ def get_app_data_dir() -> Path:
 
 # 기본 설정값
 DEFAULT_SETTINGS = {
-    "cleaning_model": "llama3.2:latest",
+    # AI 모델 설정 (각 단계별 별도 선택 가능)
+    "cleaning_model": "llama3.2:latest",    # 텍스트 정리용
+    "summary_model": "llama3.2:latest",     # 회의록 생성용
+    "thanks_model": "llama3.2:latest",      # 감사인사 생성용
+    "devstatus_model": "llama3.2:latest",   # 개발현황 생성용
+    # 레거시 호환성 (기존 writing_model은 summary_model로 마이그레이션)
     "writing_model": "llama3.2:latest",
     "pdf_extraction_mode": 0,  # 0: smart, 1: layout, 2: simple
     "auto_search_today": True,
@@ -136,12 +141,39 @@ class SettingsManager:
     
     @property
     def writing_model(self) -> str:
-        """작성용 AI 모델"""
+        """작성용 AI 모델 (레거시 호환)"""
         return self.get("writing_model", DEFAULT_SETTINGS["writing_model"])
     
     @writing_model.setter
     def writing_model(self, value: str) -> None:
         self.set("writing_model", value)
+    
+    @property
+    def summary_model(self) -> str:
+        """회의록 생성용 AI 모델"""
+        return self.get("summary_model", DEFAULT_SETTINGS["summary_model"])
+    
+    @summary_model.setter
+    def summary_model(self, value: str) -> None:
+        self.set("summary_model", value)
+    
+    @property
+    def thanks_model(self) -> str:
+        """감사인사 생성용 AI 모델"""
+        return self.get("thanks_model", DEFAULT_SETTINGS["thanks_model"])
+    
+    @thanks_model.setter
+    def thanks_model(self, value: str) -> None:
+        self.set("thanks_model", value)
+    
+    @property
+    def devstatus_model(self) -> str:
+        """개발현황 생성용 AI 모델"""
+        return self.get("devstatus_model", DEFAULT_SETTINGS["devstatus_model"])
+    
+    @devstatus_model.setter
+    def devstatus_model(self, value: str) -> None:
+        self.set("devstatus_model", value)
     
     @property
     def pdf_extraction_mode(self) -> int:

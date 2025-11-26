@@ -36,7 +36,9 @@ class AnalysisWorker(QThread):
         file_paths: List[str],
         pdf_extraction_mode: str = "smart",
         cleaning_model: str = "llama3.2",
-        writing_model: str = "llama3.2"
+        summary_model: str = "llama3.2",
+        thanks_model: str = "llama3.2",
+        devstatus_model: str = "llama3.2"
     ):
         """
         초기화
@@ -45,19 +47,26 @@ class AnalysisWorker(QThread):
             file_paths: 분석할 파일 경로 리스트
             pdf_extraction_mode: PDF 추출 모드 (simple, smart, layout)
             cleaning_model: 텍스트 정리용 AI 모델
-            writing_model: 회의록/감사인사 작성용 AI 모델
+            summary_model: 회의록 생성용 AI 모델
+            thanks_model: 감사인사 생성용 AI 모델
+            devstatus_model: 개발현황 생성용 AI 모델
         """
         super().__init__()
         self.file_paths = file_paths
         self.pdf_extraction_mode = pdf_extraction_mode
         self.doc_parser = DocumentParser()
+        
+        # 각 단계별 AI 클라이언트 생성
         self.cleaning_client = OllamaClient(model=cleaning_model)
-        self.writing_client = OllamaClient(model=writing_model)
+        self.summary_client = OllamaClient(model=summary_model)
+        self.thanks_client = OllamaClient(model=thanks_model)
+        self.devstatus_client = OllamaClient(model=devstatus_model)
         self._is_cancelled = False
         
         logger.info(
             f"워커 초기화: PDF모드={pdf_extraction_mode}, "
-            f"정리={cleaning_model}, 작성={writing_model}, "
+            f"정리={cleaning_model}, 회의록={summary_model}, "
+            f"감사={thanks_model}, 현황={devstatus_model}, "
             f"파일={len(file_paths)}개"
         )
 
@@ -122,7 +131,7 @@ class AnalysisWorker(QThread):
             )
             
             step3_start = time.time()
-            summary = self.writing_client.generate_summary(
+            summary = self.summary_client.generate_summary(
                 cleaned_text,  # 정리된 텍스트 사용
                 progress_callback=self._ai_progress_callback
             )
@@ -148,7 +157,7 @@ class AnalysisWorker(QThread):
             )
             
             step4_start = time.time()
-            thanks = self.writing_client.generate_thanks(
+            thanks = self.thanks_client.generate_thanks(
                 cleaned_text,  # 정리된 텍스트 사용
                 progress_callback=self._ai_progress_callback
             )
@@ -172,7 +181,7 @@ class AnalysisWorker(QThread):
             )
             
             step5_start = time.time()
-            devstatus = self.writing_client.generate_devstatus(
+            devstatus = self.devstatus_client.generate_devstatus(
                 cleaned_text,  # 정리된 텍스트 사용
                 progress_callback=self._ai_progress_callback
             )

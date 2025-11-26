@@ -3,6 +3,7 @@
 - clean: 원본 텍스트 → 정리된 텍스트
 - summary: 정리된 텍스트 → 통합 회의록
 - thanks: 정리된 텍스트 → 감사 인사
+- devstatus: 정리된 텍스트 → 개발 현황
 """
 import logging
 from PySide6.QtCore import QThread, Signal, Slot
@@ -26,20 +27,26 @@ class SingleStepWorker(QThread):
         step_type: str,
         source_text: str,
         cleaning_model: str = "gemma3:4b",
-        writing_model: str = "gemma3:4b"
+        summary_model: str = "gemma3:4b",
+        thanks_model: str = "gemma3:4b",
+        devstatus_model: str = "gemma3:4b"
     ):
         """
         Args:
-            step_type: 실행할 단계 ("clean", "summary", "thanks")
+            step_type: 실행할 단계 ("clean", "summary", "thanks", "devstatus")
             source_text: 입력 텍스트
             cleaning_model: 텍스트 정리용 AI 모델
-            writing_model: 회의록/감사인사 작성용 AI 모델
+            summary_model: 회의록 생성용 AI 모델
+            thanks_model: 감사인사 생성용 AI 모델
+            devstatus_model: 개발현황 생성용 AI 모델
         """
         super().__init__()
         self.step_type = step_type
         self.source_text = source_text
         self.cleaning_model = cleaning_model
-        self.writing_model = writing_model
+        self.summary_model = summary_model
+        self.thanks_model = thanks_model
+        self.devstatus_model = devstatus_model
     
     def run(self):
         """워커 실행"""
@@ -81,7 +88,7 @@ class SingleStepWorker(QThread):
         """회의록 생성 실행"""
         self.progress.emit("Step 3: 회의록 생성 중...")
         
-        client = OllamaClient(model=self.writing_model)
+        client = OllamaClient(model=self.summary_model)
         if not client.is_available():
             self.error.emit("Ollama 서버에 연결할 수 없습니다.")
             return
@@ -97,7 +104,7 @@ class SingleStepWorker(QThread):
         """감사인사 생성 실행"""
         self.progress.emit("Step 4: 감사인사 생성 중...")
         
-        client = OllamaClient(model=self.writing_model)
+        client = OllamaClient(model=self.thanks_model)
         if not client.is_available():
             self.error.emit("Ollama 서버에 연결할 수 없습니다.")
             return
@@ -113,7 +120,7 @@ class SingleStepWorker(QThread):
         """개발 현황 생성 실행"""
         self.progress.emit("Step 5: 개발 현황 생성 중...")
         
-        client = OllamaClient(model=self.writing_model)
+        client = OllamaClient(model=self.devstatus_model)
         if not client.is_available():
             self.error.emit("Ollama 서버에 연결할 수 없습니다.")
             return

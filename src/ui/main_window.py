@@ -199,54 +199,88 @@ class MainWindow(QMainWindow):
         return group
 
     def _create_model_selection_area(self) -> QWidget:
-        """AI 모델 선택 영역 생성"""
-        group = QGroupBox("🤖 AI 모델 설정")
+        """AI 모델 선택 영역 생성 (각 단계별 별도 선택)"""
+        group = QGroupBox("🤖 AI 모델 설정 (단계별)")
         layout = QVBoxLayout(group)
         
-        # 첫 번째 행: 정리용 모델
+        # 모델 선택 레이아웃 (2x2 그리드 형태로 배치)
+        model_grid = QHBoxLayout()
+        
+        # 왼쪽 컬럼: 정리, 회의록
+        left_col = QVBoxLayout()
+        
+        # 1. 텍스트 정리용 모델
         cleaning_layout = QHBoxLayout()
-        cleaning_label = QLabel("📝 정리용 모델:")
+        cleaning_label = QLabel("1️⃣ 텍스트 정리:")
         cleaning_label.setMinimumWidth(100)
         cleaning_layout.addWidget(cleaning_label)
         
         self.cleaning_model_combo = QComboBox()
-        self.cleaning_model_combo.setMinimumWidth(200)
+        self.cleaning_model_combo.setMinimumWidth(180)
         self.cleaning_model_combo.currentTextChanged.connect(
             self._on_cleaning_model_changed
         )
         cleaning_layout.addWidget(self.cleaning_model_combo)
-        
-        cleaning_info = QLabel("(텍스트 정리 및 구조화)")
-        cleaning_info.setStyleSheet("color: gray; font-size: 9pt;")
-        cleaning_layout.addWidget(cleaning_info)
         cleaning_layout.addStretch()
+        left_col.addLayout(cleaning_layout)
         
-        layout.addLayout(cleaning_layout)
+        # 2. 회의록 생성용 모델
+        summary_layout = QHBoxLayout()
+        summary_label = QLabel("2️⃣ 회의록 생성:")
+        summary_label.setMinimumWidth(100)
+        summary_layout.addWidget(summary_label)
         
-        # 두 번째 행: 작성용 모델
-        writing_layout = QHBoxLayout()
-        writing_label = QLabel("✍️ 작성용 모델:")
-        writing_label.setMinimumWidth(100)
-        writing_layout.addWidget(writing_label)
-        
-        self.writing_model_combo = QComboBox()
-        self.writing_model_combo.setMinimumWidth(200)
-        self.writing_model_combo.currentTextChanged.connect(
-            self._on_writing_model_changed
+        self.summary_model_combo = QComboBox()
+        self.summary_model_combo.setMinimumWidth(180)
+        self.summary_model_combo.currentTextChanged.connect(
+            self._on_summary_model_changed
         )
-        writing_layout.addWidget(self.writing_model_combo)
+        summary_layout.addWidget(self.summary_model_combo)
+        summary_layout.addStretch()
+        left_col.addLayout(summary_layout)
         
-        writing_info = QLabel("(회의록 및 감사 인사 생성)")
-        writing_info.setStyleSheet("color: gray; font-size: 9pt;")
-        writing_layout.addWidget(writing_info)
-        writing_layout.addStretch()
+        model_grid.addLayout(left_col)
         
-        layout.addLayout(writing_layout)
+        # 오른쪽 컬럼: 감사인사, 개발현황
+        right_col = QVBoxLayout()
         
-        # 세 번째 행: 새로고침 버튼, 프롬프트 편집, 정보
+        # 3. 감사인사 생성용 모델
+        thanks_layout = QHBoxLayout()
+        thanks_label = QLabel("3️⃣ 감사 인사:")
+        thanks_label.setMinimumWidth(100)
+        thanks_layout.addWidget(thanks_label)
+        
+        self.thanks_model_combo = QComboBox()
+        self.thanks_model_combo.setMinimumWidth(180)
+        self.thanks_model_combo.currentTextChanged.connect(
+            self._on_thanks_model_changed
+        )
+        thanks_layout.addWidget(self.thanks_model_combo)
+        thanks_layout.addStretch()
+        right_col.addLayout(thanks_layout)
+        
+        # 4. 개발현황 생성용 모델
+        devstatus_layout = QHBoxLayout()
+        devstatus_label = QLabel("4️⃣ 개발 현황:")
+        devstatus_label.setMinimumWidth(100)
+        devstatus_layout.addWidget(devstatus_label)
+        
+        self.devstatus_model_combo = QComboBox()
+        self.devstatus_model_combo.setMinimumWidth(180)
+        self.devstatus_model_combo.currentTextChanged.connect(
+            self._on_devstatus_model_changed
+        )
+        devstatus_layout.addWidget(self.devstatus_model_combo)
+        devstatus_layout.addStretch()
+        right_col.addLayout(devstatus_layout)
+        
+        model_grid.addLayout(right_col)
+        layout.addLayout(model_grid)
+        
+        # 컨트롤 행: 새로고침 버튼, 프롬프트 편집, 정보
         control_layout = QHBoxLayout()
         
-        self.refresh_models_btn = QPushButton("🔄 모델 목록 새로고침")
+        self.refresh_models_btn = QPushButton("🔄 모델 새로고침")
         self.refresh_models_btn.clicked.connect(self._load_available_models)
         control_layout.addWidget(self.refresh_models_btn)
         
@@ -534,12 +568,14 @@ class MainWindow(QMainWindow):
         pdf_mode_text = self.pdf_mode_combo.currentText()
         pdf_extraction_mode = pdf_mode_text.split(' ')[0]  # "smart", "layout", "simple"
         
-        # 워커 스레드 시작 (선택된 모델들과 PDF 추출 모드 전달)
+        # 워커 스레드 시작 (각 단계별 모델과 PDF 추출 모드 전달)
         self.worker = AnalysisWorker(
             self._selected_files,
             pdf_extraction_mode=pdf_extraction_mode,
-            cleaning_model=self.selected_cleaning_model,
-            writing_model=self.selected_writing_model
+            cleaning_model=self.cleaning_model_combo.currentText(),
+            summary_model=self.summary_model_combo.currentText(),
+            thanks_model=self.thanks_model_combo.currentText(),
+            devstatus_model=self.devstatus_model_combo.currentText()
         )
         self.worker.progress_updated.connect(self._on_progress)
         self.worker.step_completed.connect(self._on_step_completed)
@@ -826,14 +862,13 @@ class MainWindow(QMainWindow):
         # 개별 단계 워커 생성 및 실행
         from src.ui.single_step_worker import SingleStepWorker
         
-        cleaning_model = self.cleaning_model_combo.currentText()
-        writing_model = self.writing_model_combo.currentText()
-        
         self.single_worker = SingleStepWorker(
             step_type=step_type,
             source_text=self.current_documents_text if step_type == "clean" else self.current_cleaned_text,
-            cleaning_model=cleaning_model,
-            writing_model=writing_model
+            cleaning_model=self.cleaning_model_combo.currentText(),
+            summary_model=self.summary_model_combo.currentText(),
+            thanks_model=self.thanks_model_combo.currentText(),
+            devstatus_model=self.devstatus_model_combo.currentText()
         )
         
         # 시그널 연결
@@ -968,41 +1003,40 @@ class MainWindow(QMainWindow):
         self.analyze_btn.setEnabled(enabled)
 
     def _load_available_models(self):
-        """사용 가능한 모델 목록 로드"""
-        self.cleaning_model_combo.clear()
-        self.writing_model_combo.clear()
+        """사용 가능한 모델 목록 로드 (4개 콤보박스)"""
+        # 모든 콤보박스 초기화
+        combos = [
+            self.cleaning_model_combo,
+            self.summary_model_combo,
+            self.thanks_model_combo,
+            self.devstatus_model_combo
+        ]
+        for combo in combos:
+            combo.clear()
+        
         self.model_info_label.setText("모델 목록 로딩 중...")
         
         # Ollama에서 모델 목록 가져오기
         models = OllamaClient.get_available_models()
         
         if models:
-            self.cleaning_model_combo.addItems(models)
-            self.writing_model_combo.addItems(models)
+            # 모든 콤보박스에 모델 추가
+            for combo in combos:
+                combo.addItems(models)
             
             # 저장된 모델 또는 기본 모델 선택
             saved_cleaning = self.settings.cleaning_model
-            saved_writing = self.settings.writing_model
+            saved_summary = self.settings.summary_model
+            saved_thanks = self.settings.thanks_model
+            saved_devstatus = self.settings.devstatus_model
             
-            # 정리용 모델 선택
-            if saved_cleaning in models:
-                self.cleaning_model_combo.setCurrentText(saved_cleaning)
-            elif "llama3.2:latest" in models:
-                self.cleaning_model_combo.setCurrentText("llama3.2:latest")
-            elif models:
-                self.cleaning_model_combo.setCurrentIndex(0)
+            # 각 콤보박스에 저장된 모델 선택
+            self._set_combo_model(self.cleaning_model_combo, saved_cleaning, models)
+            self._set_combo_model(self.summary_model_combo, saved_summary, models)
+            self._set_combo_model(self.thanks_model_combo, saved_thanks, models)
+            self._set_combo_model(self.devstatus_model_combo, saved_devstatus, models)
             
-            # 작성용 모델 선택
-            if saved_writing in models:
-                self.writing_model_combo.setCurrentText(saved_writing)
-            elif "llama3.2:latest" in models:
-                self.writing_model_combo.setCurrentText("llama3.2:latest")
-            elif models:
-                self.writing_model_combo.setCurrentIndex(0)
-            
-            self.model_info_label.setText(
-                f"✅ {len(models)}개 모델 사용 가능"
-            )
+            self.model_info_label.setText(f"✅ {len(models)}개 모델 사용 가능")
             self.model_info_label.setStyleSheet("color: green; font-size: 9pt;")
         else:
             # 모델이 없으면 기본값 추가
@@ -1013,37 +1047,65 @@ class MainWindow(QMainWindow):
                 "mistral:latest",
                 "gemma:latest"
             ]
-            self.cleaning_model_combo.addItems(default_models)
-            self.writing_model_combo.addItems(default_models)
+            for combo in combos:
+                combo.addItems(default_models)
             
             # 저장된 모델 선택 시도
-            saved_cleaning = self.settings.cleaning_model
-            saved_writing = self.settings.writing_model
-            if saved_cleaning in default_models:
-                self.cleaning_model_combo.setCurrentText(saved_cleaning)
-            if saved_writing in default_models:
-                self.writing_model_combo.setCurrentText(saved_writing)
+            self._set_combo_model(self.cleaning_model_combo, self.settings.cleaning_model, default_models)
+            self._set_combo_model(self.summary_model_combo, self.settings.summary_model, default_models)
+            self._set_combo_model(self.thanks_model_combo, self.settings.thanks_model, default_models)
+            self._set_combo_model(self.devstatus_model_combo, self.settings.devstatus_model, default_models)
             
-            self.model_info_label.setText(
-                "⚠️ Ollama 연결 실패 또는 모델 없음"
-            )
-            self.model_info_label.setStyleSheet(
-                "color: orange; font-size: 9pt;"
-            )
+            self.model_info_label.setText("⚠️ Ollama 연결 실패 또는 모델 없음")
+            self.model_info_label.setStyleSheet("color: orange; font-size: 9pt;")
+    
+    def _set_combo_model(self, combo: QComboBox, saved_model: str, models: list):
+        """콤보박스에 저장된 모델 선택"""
+        if saved_model in models:
+            combo.setCurrentText(saved_model)
+        elif "llama3.2:latest" in models:
+            combo.setCurrentText("llama3.2:latest")
+        elif models:
+            combo.setCurrentIndex(0)
 
     @Slot(str)
     def _on_cleaning_model_changed(self, model_name: str):
-        """정리용 모델 선택 변경"""
-        self.selected_cleaning_model = model_name
-        self.settings.cleaning_model = model_name  # 설정 저장
-        logger.info(f"선택된 정리용 AI 모델: {model_name}")
+        """텍스트 정리용 모델 선택 변경"""
+        if model_name:
+            self.selected_cleaning_model = model_name
+            self.settings.cleaning_model = model_name
+            logger.info(f"선택된 텍스트 정리용 AI 모델: {model_name}")
+
+    @Slot(str)
+    def _on_summary_model_changed(self, model_name: str):
+        """회의록 생성용 모델 선택 변경"""
+        if model_name:
+            self.selected_summary_model = model_name
+            self.settings.summary_model = model_name
+            logger.info(f"선택된 회의록 생성용 AI 모델: {model_name}")
+
+    @Slot(str)
+    def _on_thanks_model_changed(self, model_name: str):
+        """감사인사 생성용 모델 선택 변경"""
+        if model_name:
+            self.selected_thanks_model = model_name
+            self.settings.thanks_model = model_name
+            logger.info(f"선택된 감사인사 생성용 AI 모델: {model_name}")
+
+    @Slot(str)
+    def _on_devstatus_model_changed(self, model_name: str):
+        """개발현황 생성용 모델 선택 변경"""
+        if model_name:
+            self.selected_devstatus_model = model_name
+            self.settings.devstatus_model = model_name
+            logger.info(f"선택된 개발현황 생성용 AI 모델: {model_name}")
 
     @Slot(str)
     def _on_writing_model_changed(self, model_name: str):
-        """작성용 모델 선택 변경"""
-        self.selected_writing_model = model_name
-        self.settings.writing_model = model_name  # 설정 저장
-        logger.info(f"선택된 작성용 AI 모델: {model_name}")
+        """작성용 모델 선택 변경 (레거시 호환)"""
+        if model_name:
+            self.selected_writing_model = model_name
+            self.settings.writing_model = model_name
 
     @Slot()
     def _on_edit_prompts(self):
