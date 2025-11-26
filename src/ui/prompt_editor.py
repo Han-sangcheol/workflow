@@ -155,12 +155,12 @@ class PromptEditorDialog(QDialog):
             user_prompt = user_prompts.get(prompt_type, "")
             
             if user_prompt:
+                # 사용자 저장 프롬프트가 있으면 표시
                 editor.setPlainText(user_prompt)
             else:
-                # 비어있으면 기본 프롬프트 표시 (회색)
-                editor.setPlaceholderText(
-                    f"(기본 프롬프트 사용 중)\n\n{get_default_prompt(prompt_type)[:500]}..."
-                )
+                # 없으면 기본 프롬프트를 직접 표시
+                default_prompt = get_default_prompt(prompt_type)
+                editor.setPlainText(default_prompt)
     
     def _reset_prompt(self, prompt_type: str):
         """프롬프트 초기화 (기본값으로 복원)"""
@@ -168,14 +168,15 @@ class PromptEditorDialog(QDialog):
             self,
             "초기화 확인",
             f"'{self.PROMPT_TYPES[prompt_type]['title']}'을(를) 기본값으로 초기화하시겠습니까?\n\n"
-            "현재 입력된 내용은 삭제됩니다.",
+            "현재 입력된 내용이 기본 프롬프트로 대체됩니다.",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No
         )
         
         if reply == QMessageBox.StandardButton.Yes:
-            # 에디터 비우기 (비어있으면 기본 프롬프트 사용)
-            self.prompt_editors[prompt_type].clear()
+            # 기본 프롬프트로 복원
+            default_prompt = get_default_prompt(prompt_type)
+            self.prompt_editors[prompt_type].setPlainText(default_prompt)
             logger.info(f"프롬프트 초기화: {prompt_type}")
     
     def _load_from_file(self, prompt_type: str):
@@ -256,7 +257,14 @@ class PromptEditorDialog(QDialog):
         # 모든 프롬프트 저장
         prompts = {}
         for prompt_type, editor in self.prompt_editors.items():
-            prompts[prompt_type] = editor.toPlainText().strip()
+            current_text = editor.toPlainText().strip()
+            default_text = get_default_prompt(prompt_type).strip()
+            
+            # 기본 프롬프트와 동일하면 빈 문자열로 저장 (기본값 사용)
+            if current_text == default_text:
+                prompts[prompt_type] = ""
+            else:
+                prompts[prompt_type] = current_text
         
         self.settings.set_all_prompts(
             cleaning=prompts.get("cleaning", ""),
@@ -266,11 +274,18 @@ class PromptEditorDialog(QDialog):
         
         logger.info("프롬프트 저장 완료")
         
+        # 저장 결과 메시지 생성
+        saved_count = sum(1 for v in prompts.values() if v)
+        if saved_count > 0:
+            msg = f"커스텀 프롬프트 {saved_count}개가 저장되었습니다.\n\n"
+        else:
+            msg = "모든 프롬프트가 기본값으로 설정되었습니다.\n\n"
+        msg += "다음 분석부터 적용됩니다."
+        
         QMessageBox.information(
             self,
             "저장 완료",
-            "프롬프트가 저장되었습니다.\n\n"
-            "다음 분석부터 적용됩니다."
+            msg
         )
         
         self.accept()
