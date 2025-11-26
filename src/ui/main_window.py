@@ -119,13 +119,37 @@ class MainWindow(QMainWindow):
         
         left_layout.addWidget(vertical_splitter)
         
-        # === 오른쪽: 시스템 모니터 ===
+        # === 오른쪽: 시스템 모니터 + AI 생성 표시 ===
         right_widget = QWidget()
         right_layout = QVBoxLayout(right_widget)
         right_layout.setContentsMargins(5, 5, 5, 5)
         
         self.system_monitor = SystemMonitor()
         right_layout.addWidget(self.system_monitor)
+        
+        # AI 실시간 생성 표시 영역
+        ai_thinking_group = QGroupBox("🧠 AI 생성 중...")
+        ai_thinking_layout = QVBoxLayout(ai_thinking_group)
+        ai_thinking_layout.setContentsMargins(5, 5, 5, 5)
+        
+        self.ai_thinking_text = QTextEdit()
+        self.ai_thinking_text.setReadOnly(True)
+        self.ai_thinking_text.setMaximumHeight(150)
+        self.ai_thinking_text.setStyleSheet("""
+            QTextEdit {
+                background-color: #1a1a2e;
+                color: #00ff88;
+                font-family: 'Consolas', 'D2Coding', monospace;
+                font-size: 9pt;
+                border: 1px solid #16213e;
+                border-radius: 4px;
+            }
+        """)
+        self.ai_thinking_text.setPlaceholderText("AI가 생성하는 내용이 여기에 표시됩니다...")
+        ai_thinking_layout.addWidget(self.ai_thinking_text)
+        
+        right_layout.addWidget(ai_thinking_group)
+        right_layout.addStretch()
         
         # 메인 스플리터에 추가
         main_splitter.addWidget(left_widget)
@@ -586,6 +610,7 @@ class MainWindow(QMainWindow):
         self.worker.summary_ready.connect(self._on_summary_ready)
         self.worker.thanks_ready.connect(self._on_thanks_ready)
         self.worker.devstatus_ready.connect(self._on_devstatus_ready)
+        self.worker.ai_thinking.connect(self._on_ai_thinking)
         self.worker.error_occurred.connect(self._on_error)
         self.worker.finished.connect(self._on_finished)
         self.worker.start()
@@ -594,6 +619,28 @@ class MainWindow(QMainWindow):
     def _on_progress(self, message: str):
         """진행 상황 업데이트"""
         self.status_label.setText(message)
+        # 새로운 단계 시작 시 AI 생성 텍스트 초기화
+        if message.startswith("Step"):
+            self.ai_thinking_text.clear()
+            self._ai_thinking_buffer = ""
+
+    @Slot(str)
+    def _on_ai_thinking(self, chunk: str):
+        """AI 실시간 생성 텍스트 표시"""
+        if not hasattr(self, '_ai_thinking_buffer'):
+            self._ai_thinking_buffer = ""
+        
+        self._ai_thinking_buffer += chunk
+        
+        # 최근 500자만 표시 (성능 최적화)
+        display_text = self._ai_thinking_buffer
+        if len(display_text) > 500:
+            display_text = "..." + display_text[-500:]
+        
+        self.ai_thinking_text.setPlainText(display_text)
+        # 스크롤을 맨 아래로
+        scrollbar = self.ai_thinking_text.verticalScrollBar()
+        scrollbar.setValue(scrollbar.maximum())
 
     @Slot(int)
     def _on_step_completed(self, step: int):
@@ -712,6 +759,9 @@ class MainWindow(QMainWindow):
         """작업 완료"""
         self._stop_timer()  # 타이머 중지
         self._set_ui_enabled(True)
+        
+        # AI 생성 텍스트 영역에 완료 메시지 표시
+        self.ai_thinking_text.setPlainText("✅ 분석 완료!")
         
         # 재분석 버튼 활성화 (데이터가 있는 경우)
         if self.current_documents_text:

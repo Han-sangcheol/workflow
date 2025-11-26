@@ -28,6 +28,7 @@ class AnalysisWorker(QThread):
     summary_ready = Signal(str)  # 회의록 준비 완료
     thanks_ready = Signal(str)  # 감사 인사 준비 완료
     devstatus_ready = Signal(str)  # 개발 현황 준비 완료
+    ai_thinking = Signal(str)  # AI 실시간 생성 텍스트
     error_occurred = Signal(str)  # 오류 발생
     finished = Signal()  # 작업 완료
 
@@ -227,9 +228,9 @@ class AnalysisWorker(QThread):
         return "\n\n".join(all_text)
 
     def _ai_progress_callback(self, chunk: str):
-        """AI 생성 진행 중 콜백"""
-        # 실시간 업데이트는 UI에 부담이 될 수 있어 생략
-        pass
+        """AI 생성 진행 중 콜백 - 실시간 텍스트 전달"""
+        if chunk:
+            self.ai_thinking.emit(chunk)
 
     def cancel(self):
         """작업 취소"""
