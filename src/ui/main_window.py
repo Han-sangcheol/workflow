@@ -17,6 +17,7 @@ from PySide6.QtCore import Qt, Slot, QTimer, QElapsedTimer
 
 from .worker import AnalysisWorker
 from .system_monitor import SystemMonitor
+from .prompt_editor import PromptEditorDialog
 from .styles import APP_STYLE
 from ..utils.file_selector import FileSelector
 from ..utils.output_generator import OutputGenerator
@@ -48,6 +49,9 @@ class MainWindow(QMainWindow):
         self.elapsed_timer = QElapsedTimer()  # 경과 시간 측정
         self.display_timer = QTimer()  # UI 업데이트용 타이머
         self.display_timer.timeout.connect(self._update_elapsed_time)
+        
+        # 스텝별 시간 저장
+        self.step_times = {1: 0.0, 2: 0.0, 3: 0.0, 4: 0.0}
         
         self._init_ui()
         self._setup_logging()
@@ -228,12 +232,17 @@ class MainWindow(QMainWindow):
         
         layout.addLayout(writing_layout)
         
-        # 세 번째 행: 새로고침 버튼 및 정보
+        # 세 번째 행: 새로고침 버튼, 프롬프트 편집, 정보
         control_layout = QHBoxLayout()
         
         self.refresh_models_btn = QPushButton("🔄 모델 목록 새로고침")
         self.refresh_models_btn.clicked.connect(self._load_available_models)
         control_layout.addWidget(self.refresh_models_btn)
+        
+        self.edit_prompt_btn = QPushButton("📝 프롬프트 편집")
+        self.edit_prompt_btn.setToolTip("AI 프롬프트를 직접 수정합니다")
+        self.edit_prompt_btn.clicked.connect(self._on_edit_prompts)
+        control_layout.addWidget(self.edit_prompt_btn)
         
         self.model_info_label = QLabel("")
         self.model_info_label.setStyleSheet("color: gray; font-size: 9pt;")
@@ -279,6 +288,15 @@ class MainWindow(QMainWindow):
         progress_time_layout.addWidget(self.time_label)
         
         layout.addLayout(progress_time_layout)
+        
+        # 스텝별 시간 표시
+        self.step_times_label = QLabel("Step 1: --:-- | Step 2: --:-- | Step 3: --:-- | Step 4: --:--")
+        self.step_times_label.setStyleSheet(
+            "font-size: 9pt; color: #666; background: #F5F5F5; "
+            "padding: 4px 8px; border-radius: 3px;"
+        )
+        self.step_times_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(self.step_times_label)
         
         # 진행 상황 텍스트
         self.status_label = QLabel("파일을 선택하세요")
@@ -431,6 +449,10 @@ class MainWindow(QMainWindow):
             "padding: 5px 10px; background: #FFF3E0; border-radius: 4px;"
         )
         
+        # 스텝별 시간 초기화
+        self.step_times = {1: 0.0, 2: 0.0, 3: 0.0, 4: 0.0}
+        self.step_times_label.setText("Step 1: --:-- | Step 2: --:-- | Step 3: --:-- | Step 4: --:--")
+        
         # 이전 결과 초기화
         self.documents_text.clear()
         self.cleaned_text.clear()
@@ -451,6 +473,7 @@ class MainWindow(QMainWindow):
         )
         self.worker.progress_updated.connect(self._on_progress)
         self.worker.step_completed.connect(self._on_step_completed)
+        self.worker.step_time_recorded.connect(self._on_step_time_recorded)
         self.worker.documents_parsed.connect(self._on_documents_parsed)
         self.worker.text_cleaned.connect(self._on_text_cleaned)
         self.worker.summary_ready.connect(self._on_summary_ready)
@@ -468,6 +491,27 @@ class MainWindow(QMainWindow):
     def _on_step_completed(self, step: int):
         """단계 완료"""
         self.progress_bar.setValue(step)
+
+    @Slot(int, float)
+    def _on_step_time_recorded(self, step: int, elapsed_seconds: float):
+        """스텝별 소요 시간 기록"""
+        self.step_times[step] = elapsed_seconds
+        self._update_step_times_display()
+    
+    def _update_step_times_display(self):
+        """스텝별 시간 표시 업데이트"""
+        def format_time(seconds: float) -> str:
+            if seconds == 0.0:
+                return "--:--"
+            minutes = int(seconds) // 60
+            secs = int(seconds) % 60
+            return f"{minutes:02d}:{secs:02d}"
+        
+        times_text = " | ".join([
+            f"Step {i}: {format_time(self.step_times[i])}"
+            for i in range(1, 5)
+        ])
+        self.step_times_label.setText(times_text)
 
     @Slot(str)
     def _on_documents_parsed(self, documents_text: str):
@@ -679,6 +723,12 @@ class MainWindow(QMainWindow):
         self.selected_writing_model = model_name
         self.settings.writing_model = model_name  # 설정 저장
         logger.info(f"선택된 작성용 AI 모델: {model_name}")
+
+    @Slot()
+    def _on_edit_prompts(self):
+        """프롬프트 편집 다이얼로그 열기"""
+        dialog = PromptEditorDialog(self)
+        dialog.exec()
 
     def _check_and_start_ollama(self):
         """Ollama 서버 확인 및 자동 시작"""

@@ -22,6 +22,10 @@ DEFAULT_SETTINGS = {
     "window_height": 750,
     "window_x": None,
     "window_y": None,
+    # 사용자 프롬프트 (빈 문자열이면 코드 기본값 사용)
+    "cleaning_prompt": "",
+    "summary_prompt": "",
+    "thanks_prompt": "",
 }
 
 
@@ -171,6 +175,56 @@ class SettingsManager:
             "window_height": height,
             "window_x": x,
             "window_y": y,
+        })
+    
+    # === 프롬프트 설정 ===
+    
+    @property
+    def cleaning_prompt(self) -> str:
+        """텍스트 정리용 프롬프트 (빈 문자열이면 기본값 사용)"""
+        return self.get("cleaning_prompt", "")
+    
+    @cleaning_prompt.setter
+    def cleaning_prompt(self, value: str) -> None:
+        self.set("cleaning_prompt", value)
+    
+    @property
+    def summary_prompt(self) -> str:
+        """통합 회의록용 프롬프트 (빈 문자열이면 기본값 사용)"""
+        return self.get("summary_prompt", "")
+    
+    @summary_prompt.setter
+    def summary_prompt(self, value: str) -> None:
+        self.set("summary_prompt", value)
+    
+    @property
+    def thanks_prompt(self) -> str:
+        """감사 인사용 프롬프트 (빈 문자열이면 기본값 사용)"""
+        return self.get("thanks_prompt", "")
+    
+    @thanks_prompt.setter
+    def thanks_prompt(self, value: str) -> None:
+        self.set("thanks_prompt", value)
+    
+    def get_all_prompts(self) -> Dict[str, str]:
+        """모든 사용자 프롬프트 반환"""
+        return {
+            "cleaning": self.cleaning_prompt,
+            "summary": self.summary_prompt,
+            "thanks": self.thanks_prompt,
+        }
+    
+    def set_all_prompts(
+        self,
+        cleaning: str = "",
+        summary: str = "",
+        thanks: str = ""
+    ) -> None:
+        """모든 프롬프트 한번에 저장 (자동 저장)"""
+        self.set_multiple({
+            "cleaning_prompt": cleaning,
+            "summary_prompt": summary,
+            "thanks_prompt": thanks,
         })
 
 

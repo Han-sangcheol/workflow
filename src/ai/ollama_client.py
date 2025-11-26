@@ -12,12 +12,7 @@ try:
 except ImportError:
     requests = None
 
-from .prompt_config import (
-    SYSTEM_PROMPT,
-    CLEANING_PROMPT,
-    SUMMARY_PROMPT,
-    THANKS_PROMPT
-)
+from .prompt_config import SYSTEM_PROMPT, get_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -214,14 +209,17 @@ class OllamaClient:
         return self._generate(prompt, progress_callback)
 
     def _create_cleaning_prompt(self, documents_text: str) -> str:
-        """텍스트 정리 프롬프트 (prompt_config.py 사용)"""
-        return CLEANING_PROMPT.format(documents_text=documents_text)
+        """텍스트 정리 프롬프트 (사용자 설정 또는 기본값)"""
+        prompt_template = get_prompt("cleaning")
+        return prompt_template.format(documents_text=documents_text)
 
     def _create_summary_prompt(self, documents_text: str) -> str:
-        """통합 회의록 생성 프롬프트 (prompt_config.py 사용)"""
-        return SUMMARY_PROMPT.format(cleaned_text=documents_text)
+        """통합 회의록 생성 프롬프트 (사용자 설정 또는 기본값)"""
+        prompt_template = get_prompt("summary")
+        return prompt_template.format(cleaned_text=documents_text)
 
     def _create_thanks_prompt(self, documents_text: str) -> str:
-        """감사 인사 생성 프롬프트 (prompt_config.py 사용)"""
-        return THANKS_PROMPT.format(cleaned_text=documents_text)
+        """감사 인사 생성 프롬프트 (사용자 설정 또는 기본값)"""
+        prompt_template = get_prompt("thanks")
+        return prompt_template.format(cleaned_text=documents_text)
 

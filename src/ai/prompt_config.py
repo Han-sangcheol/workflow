@@ -3,6 +3,9 @@ AI 프롬프트 설정
 업무일지 분석을 위한 프롬프트 템플릿을 정의합니다.
 """
 
+from typing import Dict
+
+
 # 시스템 프롬프트 (AI 역할 정의)
 SYSTEM_PROMPT = """당신은 FW팀의 업무일지를 분석하고 정리하는 전문가입니다.
 정확하고 체계적으로 업무 내용을 정리하며, 항상 한국어로 응답합니다.
@@ -166,4 +169,66 @@ THANKS_PROMPT = """다음은 정리된 팀원들의 일일 업무일지입니다
 [정리된 업무일지]
 {cleaned_text}
 """
+
+
+# === 프롬프트 조회 함수 ===
+
+def get_prompt(prompt_type: str) -> str:
+    """
+    프롬프트 반환 (사용자 설정 우선, 없으면 기본값)
+    
+    Args:
+        prompt_type: "cleaning", "summary", "thanks" 중 하나
+        
+    Returns:
+        프롬프트 문자열
+    """
+    # 순환 임포트 방지를 위해 함수 내에서 임포트
+    from ..utils.settings_manager import get_settings
+    
+    settings = get_settings()
+    
+    # 기본 프롬프트 매핑
+    default_prompts = {
+        "cleaning": CLEANING_PROMPT,
+        "summary": SUMMARY_PROMPT,
+        "thanks": THANKS_PROMPT,
+    }
+    
+    # 사용자 프롬프트 조회
+    user_prompts = settings.get_all_prompts()
+    user_prompt = user_prompts.get(prompt_type, "")
+    
+    # 사용자 프롬프트가 있으면 반환, 없으면 기본값 반환
+    if user_prompt and user_prompt.strip():
+        return user_prompt
+    
+    return default_prompts.get(prompt_type, "")
+
+
+def get_default_prompt(prompt_type: str) -> str:
+    """
+    기본 프롬프트 반환 (항상 코드에 정의된 기본값)
+    
+    Args:
+        prompt_type: "cleaning", "summary", "thanks" 중 하나
+        
+    Returns:
+        기본 프롬프트 문자열
+    """
+    default_prompts = {
+        "cleaning": CLEANING_PROMPT,
+        "summary": SUMMARY_PROMPT,
+        "thanks": THANKS_PROMPT,
+    }
+    return default_prompts.get(prompt_type, "")
+
+
+def get_all_default_prompts() -> Dict[str, str]:
+    """모든 기본 프롬프트 반환"""
+    return {
+        "cleaning": CLEANING_PROMPT,
+        "summary": SUMMARY_PROMPT,
+        "thanks": THANKS_PROMPT,
+    }
 

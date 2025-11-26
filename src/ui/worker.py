@@ -4,6 +4,7 @@
 """
 
 import logging
+import time
 from typing import List
 
 from PySide6.QtCore import QThread, Signal
@@ -20,6 +21,7 @@ class AnalysisWorker(QThread):
     # 신호 정의
     progress_updated = Signal(str)  # 진행 상황 메시지
     step_completed = Signal(int)  # 단계 완료 (1,2,3,4)
+    step_time_recorded = Signal(int, float)  # 스텝별 소요 시간 (스텝 번호, 초)
     documents_parsed = Signal(str)  # 문서 파싱 완료 (원본 텍스트)
     text_cleaned = Signal(str)  # 텍스트 정리 완료
     summary_ready = Signal(str)  # 회의록 준비 완료
@@ -65,7 +67,10 @@ class AnalysisWorker(QThread):
                 "Step 1: 문서 파일 읽기 중..."
             )
             
+            step1_start = time.time()
             documents_text = self._parse_documents()
+            step1_time = time.time() - step1_start
+            
             if not documents_text:
                 self.error_occurred.emit(
                     "문서를 읽을 수 없습니다"
@@ -75,6 +80,7 @@ class AnalysisWorker(QThread):
             # 원본 텍스트 전달
             self.documents_parsed.emit(documents_text)
             self.step_completed.emit(1)
+            self.step_time_recorded.emit(1, step1_time)
             
             if self._is_cancelled:
                 return
@@ -84,10 +90,12 @@ class AnalysisWorker(QThread):
                 "Step 2: AI로 텍스트 정리 중..."
             )
             
+            step2_start = time.time()
             cleaned_text = self.cleaning_client.clean_and_organize(
                 documents_text,
                 progress_callback=self._ai_progress_callback
             )
+            step2_time = time.time() - step2_start
             
             if not cleaned_text:
                 self.error_occurred.emit(
@@ -97,6 +105,7 @@ class AnalysisWorker(QThread):
             
             self.text_cleaned.emit(cleaned_text)
             self.step_completed.emit(2)
+            self.step_time_recorded.emit(2, step2_time)
             
             if self._is_cancelled:
                 return
@@ -106,10 +115,12 @@ class AnalysisWorker(QThread):
                 "Step 3: AI로 회의록 생성 중..."
             )
             
+            step3_start = time.time()
             summary = self.writing_client.generate_summary(
                 cleaned_text,  # 정리된 텍스트 사용
                 progress_callback=self._ai_progress_callback
             )
+            step3_time = time.time() - step3_start
             
             if not summary:
                 self.error_occurred.emit(
@@ -119,6 +130,7 @@ class AnalysisWorker(QThread):
             
             self.summary_ready.emit(summary)
             self.step_completed.emit(3)
+            self.step_time_recorded.emit(3, step3_time)
             
             if self._is_cancelled:
                 return
@@ -128,10 +140,12 @@ class AnalysisWorker(QThread):
                 "Step 4: AI로 감사 인사 생성 중..."
             )
             
+            step4_start = time.time()
             thanks = self.writing_client.generate_thanks(
                 cleaned_text,  # 정리된 텍스트 사용
                 progress_callback=self._ai_progress_callback
             )
+            step4_time = time.time() - step4_start
             
             if not thanks:
                 self.error_occurred.emit("감사 인사 생성 실패")
@@ -139,6 +153,7 @@ class AnalysisWorker(QThread):
             
             self.thanks_ready.emit(thanks)
             self.step_completed.emit(4)
+            self.step_time_recorded.emit(4, step4_time)
             
             self.progress_updated.emit("모든 작업 완료!")
             
