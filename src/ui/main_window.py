@@ -11,13 +11,16 @@ from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QListWidget, QTextEdit, QProgressBar,
     QLabel, QFileDialog, QCheckBox, QTabWidget,
-    QMessageBox, QComboBox, QGroupBox, QSplitter
+    QMessageBox, QComboBox, QGroupBox, QSplitter,
+    QMenuBar, QMenu
 )
+from PySide6.QtGui import QAction
 from PySide6.QtCore import Qt, Slot, QTimer, QElapsedTimer
 
 from .worker import AnalysisWorker
 from .system_monitor import SystemMonitor
 from .prompt_editor import PromptEditorDialog
+from .help_dialog import HelpDialog
 from .styles import APP_STYLE
 from ..utils.file_selector import FileSelector
 from ..utils.output_generator import OutputGenerator
@@ -66,6 +69,9 @@ class MainWindow(QMainWindow):
         
         # 애플리케이션 스타일 적용
         self.setStyleSheet(APP_STYLE)
+        
+        # 메뉴바 생성
+        self._create_menu_bar()
         
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
@@ -729,6 +735,76 @@ class MainWindow(QMainWindow):
         """프롬프트 편집 다이얼로그 열기"""
         dialog = PromptEditorDialog(self)
         dialog.exec()
+
+    def _create_menu_bar(self):
+        """메뉴바 생성"""
+        menubar = self.menuBar()
+        
+        # 도움말 메뉴
+        help_menu = menubar.addMenu("도움말(&H)")
+        
+        # 사용 설명서
+        help_action = QAction("📖 사용 설명서", self)
+        help_action.setShortcut("F1")
+        help_action.triggered.connect(self._on_show_help)
+        help_menu.addAction(help_action)
+        
+        help_menu.addSeparator()
+        
+        # Ollama 설치 가이드
+        ollama_action = QAction("🤖 Ollama 설치 방법", self)
+        ollama_action.triggered.connect(self._on_show_ollama_help)
+        help_menu.addAction(ollama_action)
+        
+        # GPU 설정 가이드
+        gpu_action = QAction("🎮 GPU 설정 방법", self)
+        gpu_action.triggered.connect(self._on_show_gpu_help)
+        help_menu.addAction(gpu_action)
+        
+        help_menu.addSeparator()
+        
+        # 프로그램 정보
+        about_action = QAction("ℹ️ 프로그램 정보", self)
+        about_action.triggered.connect(self._on_show_about)
+        help_menu.addAction(about_action)
+
+    @Slot()
+    def _on_show_help(self):
+        """사용 설명서 다이얼로그 열기"""
+        dialog = HelpDialog(self)
+        dialog.exec()
+
+    @Slot()
+    def _on_show_ollama_help(self):
+        """Ollama 설치 도움말 (탭 1번으로 열기)"""
+        dialog = HelpDialog(self)
+        dialog.tab_widget.setCurrentIndex(1)  # Ollama 탭
+        dialog.exec()
+
+    @Slot()
+    def _on_show_gpu_help(self):
+        """GPU 설정 도움말 (탭 2번으로 열기)"""
+        dialog = HelpDialog(self)
+        dialog.tab_widget.setCurrentIndex(2)  # GPU 탭
+        dialog.exec()
+
+    @Slot()
+    def _on_show_about(self):
+        """프로그램 정보 표시"""
+        QMessageBox.about(
+            self,
+            "프로그램 정보",
+            "<h3>업무일지 AI 분석 시스템</h3>"
+            "<p>버전: 1.0.0</p>"
+            "<p>팀원들의 일일 업무일지를 분석하여<br>"
+            "통합 회의록과 감사 인사를 자동으로 생성합니다.</p>"
+            "<p><b>기술 스택:</b><br>"
+            "• PySide6 (GUI)<br>"
+            "• Ollama (로컬 AI)<br>"
+            "• PyMuPDF (PDF 파싱)</p>"
+            "<p><a href='https://github.com/Han-sangcheol/workflow'>"
+            "GitHub 저장소</a></p>"
+        )
 
     def _check_and_start_ollama(self):
         """Ollama 서버 확인 및 자동 시작"""
