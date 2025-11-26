@@ -21,12 +21,16 @@ from .worker import AnalysisWorker
 from .system_monitor import SystemMonitor
 from .prompt_editor import PromptEditorDialog
 from .help_dialog import HelpDialog
+from .period_analysis_dialog import PeriodAnalysisDialog
+from .project_manager_dialog import ProjectManagerDialog
 from .styles import APP_STYLE
 from ..utils.file_selector import FileSelector
 from ..utils.output_generator import OutputGenerator
 from ..utils.ollama_manager import OllamaManager
 from ..utils.settings_manager import get_settings
+from ..utils.task_parser import TaskParser
 from ..ai.ollama_client import OllamaClient
+from ..database.db_manager import get_db_manager
 
 logger = logging.getLogger(__name__)
 
@@ -683,6 +687,9 @@ class MainWindow(QMainWindow):
         
         if self.current_summary and self.current_thanks:
             self.save_btn.setEnabled(True)
+        
+        # DB에 분석 결과 저장
+        self._save_analysis_to_db()
     
     def _update_elapsed_time(self):
         """경과 시간 업데이트 (1초마다 호출)"""
@@ -708,6 +715,60 @@ class MainWindow(QMainWindow):
             "font-size: 11pt; font-weight: bold; color: #4CAF50; "
             "padding: 5px 10px; background: #E8F5E9; border-radius: 4px;"
         )
+    
+    def _save_analysis_to_db(self):
+        """분석 결과를 데이터베이스에 저장"""
+        try:
+            from datetime import date
+            
+            db = get_db_manager()
+            
+            # 파일명에서 날짜 추출 시도
+            parser = TaskParser()
+            analysis_date = None
+            
+            if hasattr(self, '_selected_files') and self._selected_files:
+                for file_path in self._selected_files:
+                    analysis_date = parser.extract_date_from_filename(file_path)
+                    if analysis_date:
+                        break
+            
+            # 날짜를 찾지 못하면 오늘 날짜 사용
+            if not analysis_date:
+                analysis_date = date.today()
+            
+            # 1. 분석 이력 저장
+            file_count = len(self._selected_files) if hasattr(self, '_selected_files') else 0
+            db.save_analysis_history(
+                analysis_date=analysis_date,
+                file_count=file_count,
+                raw_text=self.current_documents_text,
+                cleaned_text=self.current_cleaned_text,
+                summary_text=self.current_summary,
+                thanks_text=self.current_thanks,
+                devstatus_text=self.current_devstatus
+            )
+            
+            # 2. 정리된 텍스트에서 업무 데이터 파싱 후 저장
+            if self.current_cleaned_text:
+                tasks = parser.parse_cleaned_text(self.current_cleaned_text)
+                
+                for task in tasks:
+                    db.add_daily_task(
+                        member_name=task.member_name,
+                        work_date=task.work_date,
+                        task_content=task.task_content,
+                        project_name=task.project_name,
+                        progress_percent=task.progress_percent,
+                        status=task.status
+                    )
+                
+                logger.info(f"DB 저장 완료: 분석 이력 1건, 업무 {len(tasks)}건")
+            else:
+                logger.info("DB 저장 완료: 분석 이력 1건")
+                
+        except Exception as e:
+            logger.error(f"DB 저장 오류: {e}")
 
     @Slot()
     def _on_reanalyze_clean(self):
@@ -994,6 +1055,28 @@ class MainWindow(QMainWindow):
         """메뉴바 생성"""
         menubar = self.menuBar()
         
+        # 분석 메뉴
+        analysis_menu = menubar.addMenu("분석(&A)")
+        
+        # 기간별 성과 분석
+        period_analysis_action = QAction("📊 기간별 성과 분석", self)
+        period_analysis_action.setShortcut("Ctrl+P")
+        period_analysis_action.triggered.connect(self._on_show_period_analysis)
+        analysis_menu.addAction(period_analysis_action)
+        
+        # 프로젝트 관리
+        project_manager_action = QAction("📋 프로젝트 관리", self)
+        project_manager_action.setShortcut("Ctrl+M")
+        project_manager_action.triggered.connect(self._on_show_project_manager)
+        analysis_menu.addAction(project_manager_action)
+        
+        analysis_menu.addSeparator()
+        
+        # DB 통계 보기
+        db_stats_action = QAction("📁 데이터베이스 통계", self)
+        db_stats_action.triggered.connect(self._on_show_db_stats)
+        analysis_menu.addAction(db_stats_action)
+        
         # 도움말 메뉴
         help_menu = menubar.addMenu("도움말(&H)")
         
@@ -1021,6 +1104,48 @@ class MainWindow(QMainWindow):
         about_action = QAction("ℹ️ 프로그램 정보", self)
         about_action.triggered.connect(self._on_show_about)
         help_menu.addAction(about_action)
+
+    @Slot()
+    def _on_show_period_analysis(self):
+        """기간별 성과 분석 다이얼로그 열기"""
+        dialog = PeriodAnalysisDialog(self)
+        dialog.exec()
+    
+    @Slot()
+    def _on_show_project_manager(self):
+        """프로젝트 관리 다이얼로그 열기"""
+        dialog = ProjectManagerDialog(self)
+        dialog.exec()
+    
+    @Slot()
+    def _on_show_db_stats(self):
+        """데이터베이스 통계 표시"""
+        try:
+            db = get_db_manager()
+            stats = db.get_statistics()
+            date_range = db.get_date_range()
+            
+            msg = (
+                f"<h3>📁 데이터베이스 통계</h3>"
+                f"<table>"
+                f"<tr><td>팀원 수:</td><td><b>{stats['member_count']}명</b></td></tr>"
+                f"<tr><td>프로젝트 수:</td><td><b>{stats['project_count']}개</b></td></tr>"
+                f"<tr><td>업무 기록:</td><td><b>{stats['task_count']}건</b></td></tr>"
+                f"<tr><td>분석 이력:</td><td><b>{stats['analysis_count']}건</b></td></tr>"
+                f"</table>"
+            )
+            
+            if date_range['min_date'] and date_range['max_date']:
+                msg += f"<p>데이터 기간: {date_range['min_date']} ~ {date_range['max_date']}</p>"
+            else:
+                msg += "<p>저장된 업무 데이터가 없습니다.</p>"
+            
+            msg += f"<p style='color:#666; font-size:10px;'>DB 경로: {db.db_path}</p>"
+            
+            QMessageBox.information(self, "데이터베이스 통계", msg)
+            
+        except Exception as e:
+            QMessageBox.critical(self, "오류", f"통계 조회 실패: {str(e)}")
 
     @Slot()
     def _on_show_help(self):

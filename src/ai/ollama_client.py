@@ -146,6 +146,26 @@ class OllamaClient:
         prompt = self._create_devstatus_prompt(documents_text)
         return self._generate(prompt, progress_callback)
 
+    def generate_period_analysis(
+        self,
+        tasks_text: str,
+        period_info: str,
+        progress_callback: Optional[Callable[[str], None]] = None
+    ) -> Optional[str]:
+        """
+        기간별 성과 분석 생성
+        
+        Args:
+            tasks_text: 기간 내 업무 목록 텍스트
+            period_info: 기간 정보 (예: "2025.11.01 ~ 2025.11.25")
+            progress_callback: 진행 상황 콜백 함수
+            
+        Returns:
+            생성된 성과 분석 보고서 (실패 시 None)
+        """
+        prompt = self._create_period_analysis_prompt(tasks_text, period_info)
+        return self._generate(prompt, progress_callback)
+
     def _generate(
         self,
         prompt: str,
@@ -245,4 +265,32 @@ class OllamaClient:
         """개발 현황 생성 프롬프트 (사용자 설정 또는 기본값)"""
         prompt_template = get_prompt("devstatus")
         return prompt_template.format(cleaned_text=documents_text)
+
+    def _create_period_analysis_prompt(self, tasks_text: str, period_info: str) -> str:
+        """기간별 성과 분석 프롬프트 (사용자 설정 또는 기본값)"""
+        prompt_template = get_prompt("period_analysis")
+        return prompt_template.format(tasks_text=tasks_text, period_info=period_info)
+
+    def generate_project_recommendation(
+        self,
+        project_data: str,
+        progress_callback: Optional[Callable[[str], None]] = None
+    ) -> Optional[str]:
+        """
+        프로젝트 분석 및 할 일 추천
+        
+        Args:
+            project_data: 프로젝트 현황 텍스트
+            progress_callback: 진행 상황 콜백 함수
+            
+        Returns:
+            생성된 추천 보고서 (실패 시 None)
+        """
+        prompt = self._create_project_recommend_prompt(project_data)
+        return self._generate(prompt, progress_callback)
+
+    def _create_project_recommend_prompt(self, project_data: str) -> str:
+        """프로젝트 추천 프롬프트 (사용자 설정 또는 기본값)"""
+        prompt_template = get_prompt("project_recommend")
+        return prompt_template.format(project_data=project_data)
 
