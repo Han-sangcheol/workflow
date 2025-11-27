@@ -22,3 +22,5 @@ VERSION_TUPLE = (1, 0, 0, 0)  # (major, minor, patch, build)
 EXECUTABLE_NAME = "WorkflowAnalyzer.exe"
 INSTALLER_NAME = f"WorkflowAnalyzer_Setup_{APP_VERSION}.exe"
 
+
+

@@ -4,6 +4,7 @@
 - summary: 정리된 텍스트 → 통합 회의록
 - thanks: 정리된 텍스트 → 감사 인사
 - devstatus: 정리된 텍스트 → 개발 현황
+AI 실시간 생성 표시 지원
 """
 import logging
 from PySide6.QtCore import QThread, Signal, Slot
@@ -21,6 +22,7 @@ class SingleStepWorker(QThread):
     result_ready = Signal(str)      # 분석 결과
     error = Signal(str)             # 오류 메시지
     finished = Signal()             # 완료 시그널
+    ai_thinking = Signal(str)       # AI 실시간 생성 텍스트
     
     def __init__(
         self,
@@ -47,6 +49,12 @@ class SingleStepWorker(QThread):
         self.summary_model = summary_model
         self.thanks_model = thanks_model
         self.devstatus_model = devstatus_model
+        self._is_cancelled = False
+    
+    def cancel(self):
+        """작업 취소 요청"""
+        self._is_cancelled = True
+        logger.info(f"SingleStepWorker 취소 요청: {self.step_type}")
     
     def run(self):
         """워커 실행"""
@@ -68,6 +76,11 @@ class SingleStepWorker(QThread):
         finally:
             self.finished.emit()
     
+    def _ai_progress_callback(self, chunk: str):
+        """AI 생성 진행 중 콜백 - 실시간 텍스트 전달"""
+        if chunk:
+            self.ai_thinking.emit(chunk)
+    
     def _run_clean(self):
         """텍스트 정리 실행"""
         self.progress.emit("Step 2: 텍스트 정리 중...")
@@ -77,7 +90,10 @@ class SingleStepWorker(QThread):
             self.error.emit("Ollama 서버에 연결할 수 없습니다.")
             return
         
-        result = client.clean_and_organize(self.source_text)
+        result = client.clean_and_organize(
+            self.source_text,
+            progress_callback=self._ai_progress_callback
+        )
         if result:
             self.result_ready.emit(result)
             self.progress.emit("텍스트 정리 완료!")
@@ -93,7 +109,10 @@ class SingleStepWorker(QThread):
             self.error.emit("Ollama 서버에 연결할 수 없습니다.")
             return
         
-        result = client.generate_summary(self.source_text)
+        result = client.generate_summary(
+            self.source_text,
+            progress_callback=self._ai_progress_callback
+        )
         if result:
             self.result_ready.emit(result)
             self.progress.emit("회의록 생성 완료!")
@@ -109,7 +128,10 @@ class SingleStepWorker(QThread):
             self.error.emit("Ollama 서버에 연결할 수 없습니다.")
             return
         
-        result = client.generate_thanks(self.source_text)
+        result = client.generate_thanks(
+            self.source_text,
+            progress_callback=self._ai_progress_callback
+        )
         if result:
             self.result_ready.emit(result)
             self.progress.emit("감사인사 생성 완료!")
@@ -125,7 +147,10 @@ class SingleStepWorker(QThread):
             self.error.emit("Ollama 서버에 연결할 수 없습니다.")
             return
         
-        result = client.generate_devstatus(self.source_text)
+        result = client.generate_devstatus(
+            self.source_text,
+            progress_callback=self._ai_progress_callback
+        )
         if result:
             self.result_ready.emit(result)
             self.progress.emit("개발 현황 생성 완료!")

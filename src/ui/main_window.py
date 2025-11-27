@@ -83,8 +83,8 @@ class MainWindow(QMainWindow):
         
         main_layout = QVBoxLayout(central_widget)
         
-        # 메인 수평 스플리터 (좌/우 분할)
-        main_splitter = QSplitter(Qt.Orientation.Horizontal)
+        # 메인 수평 스플리터 (좌/우 분할) - 멤버 변수로 저장하여 상태 저장/복원 가능
+        self.main_splitter = QSplitter(Qt.Orientation.Horizontal)
         
         # === 왼쪽: 메인 작업 영역 ===
         left_widget = QWidget()
@@ -108,16 +108,16 @@ class MainWindow(QMainWindow):
         bottom_layout.addWidget(self._create_result_area())
         bottom_layout.addWidget(self._create_save_button())
         
-        # 상/하 스플리터 (상단 고정 영역 / 결과 영역)
-        vertical_splitter = QSplitter(Qt.Orientation.Vertical)
-        vertical_splitter.addWidget(top_widget)
-        vertical_splitter.addWidget(bottom_widget)
+        # 상/하 스플리터 (상단 고정 영역 / 결과 영역) - 멤버 변수로 저장
+        self.vertical_splitter = QSplitter(Qt.Orientation.Vertical)
+        self.vertical_splitter.addWidget(top_widget)
+        self.vertical_splitter.addWidget(bottom_widget)
         
         # 초기 비율 설정 (상단: 30%, 하단: 70%)
-        vertical_splitter.setStretchFactor(0, 3)
-        vertical_splitter.setStretchFactor(1, 7)
+        self.vertical_splitter.setStretchFactor(0, 3)
+        self.vertical_splitter.setStretchFactor(1, 7)
         
-        left_layout.addWidget(vertical_splitter)
+        left_layout.addWidget(self.vertical_splitter)
         
         # === 오른쪽: 시스템 모니터 + AI 생성 표시 ===
         right_widget = QWidget()
@@ -127,43 +127,43 @@ class MainWindow(QMainWindow):
         self.system_monitor = SystemMonitor()
         right_layout.addWidget(self.system_monitor)
         
-        # AI 실시간 생성 표시 영역
+        # AI 실시간 생성 표시 영역 (크기 확대: 150px → 350px)
         ai_thinking_group = QGroupBox("🧠 AI 생성 중...")
         ai_thinking_layout = QVBoxLayout(ai_thinking_group)
         ai_thinking_layout.setContentsMargins(5, 5, 5, 5)
         
         self.ai_thinking_text = QTextEdit()
         self.ai_thinking_text.setReadOnly(True)
-        self.ai_thinking_text.setMaximumHeight(150)
+        self.ai_thinking_text.setMinimumHeight(350)  # 최소 높이 350px로 확대
         self.ai_thinking_text.setStyleSheet("""
             QTextEdit {
                 background-color: #1a1a2e;
                 color: #00ff88;
                 font-family: 'Consolas', 'D2Coding', monospace;
-                font-size: 9pt;
+                font-size: 10pt;
                 border: 1px solid #16213e;
                 border-radius: 4px;
+                line-height: 1.4;
             }
         """)
         self.ai_thinking_text.setPlaceholderText("AI가 생성하는 내용이 여기에 표시됩니다...")
         ai_thinking_layout.addWidget(self.ai_thinking_text)
         
-        right_layout.addWidget(ai_thinking_group)
-        right_layout.addStretch()
+        right_layout.addWidget(ai_thinking_group, stretch=1)  # stretch 추가로 공간 확보
         
         # 메인 스플리터에 추가
-        main_splitter.addWidget(left_widget)
-        main_splitter.addWidget(right_widget)
+        self.main_splitter.addWidget(left_widget)
+        self.main_splitter.addWidget(right_widget)
         
         # 초기 비율 설정 (왼쪽: 75%, 오른쪽: 25%)
-        main_splitter.setStretchFactor(0, 75)
-        main_splitter.setStretchFactor(1, 25)
+        self.main_splitter.setStretchFactor(0, 75)
+        self.main_splitter.setStretchFactor(1, 25)
         
         # 스플리터 스타일링
-        main_splitter.setHandleWidth(4)
-        vertical_splitter.setHandleWidth(4)
+        self.main_splitter.setHandleWidth(4)
+        self.vertical_splitter.setHandleWidth(4)
         
-        main_layout.addWidget(main_splitter)
+        main_layout.addWidget(self.main_splitter)
 
     def _create_file_selection_area(self) -> QGroupBox:
         """파일 선택 영역 생성"""
@@ -328,6 +328,44 @@ class MainWindow(QMainWindow):
         group.setStyleSheet("QGroupBox { font-size: 11pt; font-weight: bold; }")
         layout = QVBoxLayout(group)
         
+        # 단계별 실행 선택 체크박스
+        step_select_layout = QHBoxLayout()
+        step_select_label = QLabel("📋 실행할 단계:")
+        step_select_label.setStyleSheet("font-size: 10pt; font-weight: normal;")
+        step_select_layout.addWidget(step_select_label)
+        
+        self.step2_check = QCheckBox("2️⃣ 텍스트 정리")
+        self.step2_check.setChecked(True)
+        self.step2_check.setToolTip("원본 텍스트를 AI가 구조화된 형태로 정리")
+        step_select_layout.addWidget(self.step2_check)
+        
+        self.step3_check = QCheckBox("3️⃣ 회의록")
+        self.step3_check.setChecked(True)
+        self.step3_check.setToolTip("정리된 텍스트로 통합 회의록 생성")
+        step_select_layout.addWidget(self.step3_check)
+        
+        self.step4_check = QCheckBox("4️⃣ 감사인사")
+        self.step4_check.setChecked(True)
+        self.step4_check.setToolTip("정리된 텍스트로 감사 인사 생성")
+        step_select_layout.addWidget(self.step4_check)
+        
+        self.step5_check = QCheckBox("5️⃣ 개발현황")
+        self.step5_check.setChecked(True)
+        self.step5_check.setToolTip("정리된 텍스트로 개발 현황 생성")
+        step_select_layout.addWidget(self.step5_check)
+        
+        # 전체 선택/해제 버튼
+        self.select_all_btn = QPushButton("전체")
+        self.select_all_btn.setMaximumWidth(50)
+        self.select_all_btn.clicked.connect(self._on_select_all_steps)
+        step_select_layout.addWidget(self.select_all_btn)
+        
+        step_select_layout.addStretch()
+        layout.addLayout(step_select_layout)
+        
+        # 분석 시작/정지 버튼 레이아웃
+        button_layout = QHBoxLayout()
+        
         # 분석 시작 버튼
         self.analyze_btn = QPushButton("🚀 분석 시작")
         self.analyze_btn.setStyleSheet(
@@ -335,7 +373,20 @@ class MainWindow(QMainWindow):
         )
         self.analyze_btn.clicked.connect(self._on_analyze)
         self.analyze_btn.setEnabled(False)
-        layout.addWidget(self.analyze_btn)
+        button_layout.addWidget(self.analyze_btn)
+        
+        # AI 정지 버튼
+        self.stop_btn = QPushButton("⏹️ 정지")
+        self.stop_btn.setStyleSheet(
+            "font-size: 12pt; padding: 10px; background-color: #dc3545; color: white;"
+        )
+        self.stop_btn.setToolTip("AI 분석을 중단합니다")
+        self.stop_btn.clicked.connect(self._on_stop_analysis)
+        self.stop_btn.setEnabled(False)  # 초기에는 비활성화
+        self.stop_btn.setMaximumWidth(100)
+        button_layout.addWidget(self.stop_btn)
+        
+        layout.addLayout(button_layout)
         
         # 진행률 및 시간 표시 행
         progress_time_layout = QHBoxLayout()
@@ -385,13 +436,45 @@ class MainWindow(QMainWindow):
 
     def _create_result_area(self) -> QWidget:
         """결과 표시 영역 생성"""
+        result_container = QWidget()
+        result_layout = QVBoxLayout(result_container)
+        result_layout.setContentsMargins(0, 0, 0, 0)
+        result_layout.setSpacing(5)
+        
+        # 편집 모드 토글 영역
+        edit_control_layout = QHBoxLayout()
+        
+        self.edit_mode_check = QCheckBox("✏️ 편집 모드")
+        self.edit_mode_check.setToolTip(
+            "체크하면 각 탭의 텍스트를 직접 편집할 수 있습니다.\n"
+            "편집 후 재분석 버튼으로 다음 단계를 실행하세요."
+        )
+        self.edit_mode_check.stateChanged.connect(self._on_edit_mode_changed)
+        edit_control_layout.addWidget(self.edit_mode_check)
+        
+        self.apply_edit_btn = QPushButton("📥 편집 내용 적용")
+        self.apply_edit_btn.setToolTip("편집한 내용을 현재 데이터에 반영합니다")
+        self.apply_edit_btn.clicked.connect(self._on_apply_edit)
+        self.apply_edit_btn.setEnabled(False)
+        self.apply_edit_btn.setMaximumWidth(130)
+        edit_control_layout.addWidget(self.apply_edit_btn)
+        
+        self.edit_status_label = QLabel("")
+        self.edit_status_label.setStyleSheet("color: #666; font-size: 9pt;")
+        edit_control_layout.addWidget(self.edit_status_label)
+        
+        edit_control_layout.addStretch()
+        result_layout.addLayout(edit_control_layout)
+        
+        # 탭 위젯
         self.tab_widget = QTabWidget()
         
         # 탭1: 원본 텍스트
         self.documents_text = QTextEdit()
         self.documents_text.setReadOnly(True)
         self.documents_text.setPlaceholderText(
-            "Step 1: 파일에서 추출된 원본 텍스트"
+            "Step 1: 파일에서 추출된 원본 텍스트\n"
+            "(편집 모드에서 수정 가능)"
         )
         self.tab_widget.addTab(self.documents_text, "1️⃣ 원본 텍스트")
         
@@ -399,7 +482,8 @@ class MainWindow(QMainWindow):
         self.cleaned_text = QTextEdit()
         self.cleaned_text.setReadOnly(True)
         self.cleaned_text.setPlaceholderText(
-            "Step 2: AI가 정리한 구조화된 텍스트"
+            "Step 2: AI가 정리한 구조화된 텍스트\n"
+            "(편집 모드에서 수정 후 재분석 가능)"
         )
         self.tab_widget.addTab(self.cleaned_text, "2️⃣ 정리된 텍스트")
         
@@ -407,7 +491,8 @@ class MainWindow(QMainWindow):
         self.summary_text = QTextEdit()
         self.summary_text.setReadOnly(True)
         self.summary_text.setPlaceholderText(
-            "Step 3: AI가 생성한 통합 회의록"
+            "Step 3: AI가 생성한 통합 회의록\n"
+            "(편집 모드에서 수정 가능)"
         )
         self.tab_widget.addTab(self.summary_text, "3️⃣ 통합 회의록")
         
@@ -415,7 +500,8 @@ class MainWindow(QMainWindow):
         self.thanks_text = QTextEdit()
         self.thanks_text.setReadOnly(True)
         self.thanks_text.setPlaceholderText(
-            "Step 4: AI가 생성한 감사 인사"
+            "Step 4: AI가 생성한 감사 인사\n"
+            "(편집 모드에서 수정 가능)"
         )
         self.tab_widget.addTab(self.thanks_text, "4️⃣ 감사 인사")
         
@@ -423,11 +509,14 @@ class MainWindow(QMainWindow):
         self.devstatus_text = QTextEdit()
         self.devstatus_text.setReadOnly(True)
         self.devstatus_text.setPlaceholderText(
-            "Step 5: AI가 생성한 오전/오후 개발 현황"
+            "Step 5: AI가 생성한 오전/오후 개발 현황\n"
+            "(편집 모드에서 수정 가능)"
         )
         self.tab_widget.addTab(self.devstatus_text, "5️⃣ 개발 현황")
         
-        return self.tab_widget
+        result_layout.addWidget(self.tab_widget)
+        
+        return result_container
 
     def _create_save_button(self) -> QWidget:
         """저장 및 재분석 버튼 영역 생성"""
@@ -564,6 +653,9 @@ class MainWindow(QMainWindow):
         # UI 비활성화
         self._set_ui_enabled(False)
         
+        # 정지 버튼 활성화
+        self.stop_btn.setEnabled(True)
+        
         # 타이머 시작
         self.elapsed_timer.start()
         self.display_timer.start(1000)  # 1초마다 업데이트
@@ -592,14 +684,28 @@ class MainWindow(QMainWindow):
         pdf_mode_text = self.pdf_mode_combo.currentText()
         pdf_extraction_mode = pdf_mode_text.split(' ')[0]  # "smart", "layout", "simple"
         
-        # 워커 스레드 시작 (각 단계별 모델과 PDF 추출 모드 전달)
+        # 선택된 단계 확인
+        selected_steps = self._get_selected_steps()
+        
+        # 최소 하나의 단계가 선택되어 있는지 확인
+        if not any(selected_steps.values()):
+            QMessageBox.warning(
+                self, "경고", 
+                "최소 하나의 분석 단계를 선택해주세요."
+            )
+            self._set_ui_enabled(True)
+            self.stop_btn.setEnabled(False)
+            return
+        
+        # 워커 스레드 시작 (각 단계별 모델, PDF 추출 모드, 선택된 단계 전달)
         self.worker = AnalysisWorker(
             self._selected_files,
             pdf_extraction_mode=pdf_extraction_mode,
             cleaning_model=self.cleaning_model_combo.currentText(),
             summary_model=self.summary_model_combo.currentText(),
             thanks_model=self.thanks_model_combo.currentText(),
-            devstatus_model=self.devstatus_model_combo.currentText()
+            devstatus_model=self.devstatus_model_combo.currentText(),
+            selected_steps=selected_steps
         )
         self.worker.progress_updated.connect(self._on_progress)
         self.worker.step_completed.connect(self._on_step_completed)
@@ -632,10 +738,10 @@ class MainWindow(QMainWindow):
         
         self._ai_thinking_buffer += chunk
         
-        # 최근 500자만 표시 (성능 최적화)
+        # 최근 2000자 표시 (창 크기 확대에 맞춰 증가)
         display_text = self._ai_thinking_buffer
-        if len(display_text) > 500:
-            display_text = "..." + display_text[-500:]
+        if len(display_text) > 2000:
+            display_text = "..." + display_text[-2000:]
         
         self.ai_thinking_text.setPlainText(display_text)
         # 스크롤을 맨 아래로
@@ -747,10 +853,124 @@ class MainWindow(QMainWindow):
         self.current_devstatus = devstatus
         self.devstatus_text.setPlainText(devstatus)
 
+    @Slot()
+    def _on_select_all_steps(self):
+        """전체 단계 선택/해제 토글"""
+        # 현재 모두 선택되어 있으면 해제, 아니면 전체 선택
+        all_checked = (
+            self.step2_check.isChecked() and 
+            self.step3_check.isChecked() and 
+            self.step4_check.isChecked() and 
+            self.step5_check.isChecked()
+        )
+        
+        new_state = not all_checked
+        self.step2_check.setChecked(new_state)
+        self.step3_check.setChecked(new_state)
+        self.step4_check.setChecked(new_state)
+        self.step5_check.setChecked(new_state)
+    
+    def _get_selected_steps(self) -> dict:
+        """선택된 단계 반환"""
+        return {
+            "step2": self.step2_check.isChecked(),
+            "step3": self.step3_check.isChecked(),
+            "step4": self.step4_check.isChecked(),
+            "step5": self.step5_check.isChecked(),
+        }
+
+    @Slot(int)
+    def _on_edit_mode_changed(self, state: int):
+        """편집 모드 토글"""
+        is_editable = state == Qt.CheckState.Checked.value
+        
+        # 모든 텍스트 영역의 편집 모드 변경
+        self.documents_text.setReadOnly(not is_editable)
+        self.cleaned_text.setReadOnly(not is_editable)
+        self.summary_text.setReadOnly(not is_editable)
+        self.thanks_text.setReadOnly(not is_editable)
+        self.devstatus_text.setReadOnly(not is_editable)
+        
+        # 적용 버튼 활성화/비활성화
+        self.apply_edit_btn.setEnabled(is_editable)
+        
+        # 상태 표시
+        if is_editable:
+            self.edit_status_label.setText("📝 편집 모드 ON - 텍스트 수정 후 '편집 내용 적용' 클릭")
+            self.edit_status_label.setStyleSheet("color: #1976D2; font-size: 9pt; font-weight: bold;")
+            # 편집 가능 시 스타일 변경
+            edit_style = """
+                QTextEdit {
+                    background-color: #FFFEF0;
+                    border: 2px solid #FFC107;
+                }
+            """
+            self.documents_text.setStyleSheet(edit_style)
+            self.cleaned_text.setStyleSheet(edit_style)
+            self.summary_text.setStyleSheet(edit_style)
+            self.thanks_text.setStyleSheet(edit_style)
+            self.devstatus_text.setStyleSheet(edit_style)
+        else:
+            self.edit_status_label.setText("")
+            self.edit_status_label.setStyleSheet("color: #666; font-size: 9pt;")
+            # 기본 스타일로 복원
+            self.documents_text.setStyleSheet("")
+            self.cleaned_text.setStyleSheet("")
+            self.summary_text.setStyleSheet("")
+            self.thanks_text.setStyleSheet("")
+            self.devstatus_text.setStyleSheet("")
+        
+        logger.info(f"편집 모드 변경: {is_editable}")
+    
+    @Slot()
+    def _on_apply_edit(self):
+        """편집 내용을 현재 데이터에 적용"""
+        # 각 탭의 텍스트를 현재 데이터에 반영
+        self.current_documents_text = self.documents_text.toPlainText()
+        self.current_cleaned_text = self.cleaned_text.toPlainText()
+        self.current_summary = self.summary_text.toPlainText()
+        self.current_thanks = self.thanks_text.toPlainText()
+        self.current_devstatus = self.devstatus_text.toPlainText()
+        
+        # 재분석 버튼 활성화 (데이터가 있는 경우)
+        if self.current_documents_text:
+            self.reanalyze_clean_btn.setEnabled(True)
+        if self.current_cleaned_text:
+            self.reanalyze_summary_btn.setEnabled(True)
+            self.reanalyze_thanks_btn.setEnabled(True)
+            self.reanalyze_devstatus_btn.setEnabled(True)
+        if self.current_summary and self.current_thanks:
+            self.save_btn.setEnabled(True)
+        
+        self.edit_status_label.setText("✅ 편집 내용이 적용되었습니다!")
+        self.edit_status_label.setStyleSheet("color: #4CAF50; font-size: 9pt; font-weight: bold;")
+        
+        # 상태 메시지 표시
+        self.status_label.setText("편집 내용 적용 완료 - 재분석 버튼으로 다음 단계 실행")
+        
+        logger.info("편집 내용 적용 완료")
+
+    @Slot()
+    def _on_stop_analysis(self):
+        """분석 중지 핸들러"""
+        if self.worker and self.worker.isRunning():
+            self.worker.cancel()
+            self.status_label.setText("⏹️ 분석 중지 요청됨... 현재 작업 완료 후 중단됩니다.")
+            self.stop_btn.setEnabled(False)
+            self.ai_thinking_text.append("\n\n⚠️ 사용자가 분석 중지를 요청했습니다.")
+            logger.info("사용자가 분석 중지 요청")
+        
+        if hasattr(self, 'single_worker') and self.single_worker and self.single_worker.isRunning():
+            self.single_worker.cancel()
+            self.status_label.setText("⏹️ 재분석 중지 요청됨...")
+            self.stop_btn.setEnabled(False)
+            logger.info("사용자가 재분석 중지 요청")
+
     @Slot(str)
     def _on_error(self, error_msg: str):
         """오류 발생"""
         self._stop_timer()  # 타이머 중지
+        self.stop_btn.setEnabled(False)  # 정지 버튼 비활성화
         QMessageBox.critical(self, "오류", error_msg)
         self.status_label.setText(f"오류: {error_msg}")
 
@@ -759,6 +979,7 @@ class MainWindow(QMainWindow):
         """작업 완료"""
         self._stop_timer()  # 타이머 중지
         self._set_ui_enabled(True)
+        self.stop_btn.setEnabled(False)  # 정지 버튼 비활성화
         
         # AI 생성 텍스트 영역에 완료 메시지 표시
         self.ai_thinking_text.setPlainText("✅ 분석 완료!")
@@ -901,6 +1122,9 @@ class MainWindow(QMainWindow):
         self.reanalyze_thanks_btn.setEnabled(False)
         self.reanalyze_devstatus_btn.setEnabled(False)
         
+        # 정지 버튼 활성화
+        self.stop_btn.setEnabled(True)
+        
         # 타이머 시작
         self.elapsed_timer.start()
         self.display_timer.start(1000)
@@ -925,6 +1149,11 @@ class MainWindow(QMainWindow):
         self.single_worker.finished.connect(self._on_single_step_finished)
         self.single_worker.error.connect(self._on_error)
         self.single_worker.progress.connect(self._on_progress)
+        self.single_worker.ai_thinking.connect(self._on_ai_thinking)  # AI 실시간 생성 표시
+        
+        # AI 생성 텍스트 초기화
+        self.ai_thinking_text.clear()
+        self._ai_thinking_buffer = ""
         
         if step_type == "clean":
             self.single_worker.result_ready.connect(self._on_single_clean_result)
@@ -974,6 +1203,7 @@ class MainWindow(QMainWindow):
         """개별 단계 분석 완료"""
         self._stop_timer()
         self._set_ui_enabled(True)
+        self.stop_btn.setEnabled(False)  # 정지 버튼 비활성화
         
         # 재분석 버튼 다시 활성화
         if self.current_documents_text:
@@ -1343,13 +1573,28 @@ class MainWindow(QMainWindow):
             y=self.y()
         )
         
+        # 스플리터 상태 저장 (각 영역 크기)
+        self.settings.set_splitter_sizes(
+            main_sizes=self.main_splitter.sizes(),
+            vertical_sizes=self.vertical_splitter.sizes()
+        )
+        
         # PDF 추출 모드 저장
         self.settings.pdf_extraction_mode = self.pdf_mode_combo.currentIndex()
         
         # 오늘 날짜 자동 검색 체크박스 저장
         self.settings.auto_search_today = self.auto_check.isChecked()
         
-        logger.info("설정 저장 완료")
+        # 분석 결과 저장 (다음 실행 시 복원)
+        self.settings.save_analysis_results(
+            documents_text=self.current_documents_text,
+            cleaned_text=self.current_cleaned_text,
+            summary_text=self.current_summary,
+            thanks_text=self.current_thanks,
+            devstatus_text=self.current_devstatus
+        )
+        
+        logger.info("설정 저장 완료 (윈도우, 스플리터, PDF모드, 자동검색, 분석결과)")
         
         # 시스템 모니터 중지
         if hasattr(self, 'system_monitor'):
@@ -1377,6 +1622,15 @@ class MainWindow(QMainWindow):
         if geometry["x"] is not None and geometry["y"] is not None:
             self.move(geometry["x"], geometry["y"])
         
+        # 스플리터 상태 복원 (각 영역 크기)
+        splitter_sizes = self.settings.get_splitter_sizes()
+        if splitter_sizes["main"]:
+            self.main_splitter.setSizes(splitter_sizes["main"])
+            logger.info(f"메인 스플리터 복원: {splitter_sizes['main']}")
+        if splitter_sizes["vertical"]:
+            self.vertical_splitter.setSizes(splitter_sizes["vertical"])
+            logger.info(f"수직 스플리터 복원: {splitter_sizes['vertical']}")
+        
         # PDF 추출 모드 적용
         pdf_mode_idx = self.settings.pdf_extraction_mode
         if 0 <= pdf_mode_idx < self.pdf_mode_combo.count():
@@ -1385,5 +1639,62 @@ class MainWindow(QMainWindow):
         # 오늘 날짜 자동 검색 체크박스 적용
         self.auto_check.setChecked(self.settings.auto_search_today)
         
+        # 마지막 분석 결과 복원
+        self._restore_analysis_results()
+        
         logger.info("저장된 설정 적용 완료")
+    
+    def _restore_analysis_results(self):
+        """저장된 분석 결과 복원"""
+        results = self.settings.get_last_analysis_results()
+        
+        # 원본 텍스트 복원
+        if results.get("documents_text"):
+            self.current_documents_text = results["documents_text"]
+            self.documents_text.setPlainText(results["documents_text"])
+            self.reanalyze_clean_btn.setEnabled(True)
+            logger.info("원본 텍스트 복원 완료")
+        
+        # 정리된 텍스트 복원
+        if results.get("cleaned_text"):
+            self.current_cleaned_text = results["cleaned_text"]
+            self.cleaned_text.setPlainText(results["cleaned_text"])
+            self.reanalyze_summary_btn.setEnabled(True)
+            self.reanalyze_thanks_btn.setEnabled(True)
+            self.reanalyze_devstatus_btn.setEnabled(True)
+            logger.info("정리된 텍스트 복원 완료")
+        
+        # 회의록 복원
+        if results.get("summary_text"):
+            self.current_summary = results["summary_text"]
+            self.summary_text.setPlainText(results["summary_text"])
+            logger.info("회의록 복원 완료")
+        
+        # 감사인사 복원
+        if results.get("thanks_text"):
+            self.current_thanks = results["thanks_text"]
+            self.thanks_text.setPlainText(results["thanks_text"])
+            logger.info("감사인사 복원 완료")
+        
+        # 개발현황 복원
+        if results.get("devstatus_text"):
+            self.current_devstatus = results["devstatus_text"]
+            self.devstatus_text.setPlainText(results["devstatus_text"])
+            logger.info("개발현황 복원 완료")
+        
+        # 저장 버튼 활성화 (회의록과 감사인사가 있으면)
+        if self.current_summary and self.current_thanks:
+            self.save_btn.setEnabled(True)
+        
+        # 복원된 결과가 있으면 상태 표시
+        has_results = any([
+            results.get("documents_text"),
+            results.get("cleaned_text"),
+            results.get("summary_text"),
+            results.get("thanks_text"),
+            results.get("devstatus_text")
+        ])
+        
+        if has_results:
+            self.status_label.setText("✅ 이전 분석 결과가 복원되었습니다. 재분석 버튼으로 계속할 수 있습니다.")
 

@@ -39,15 +39,27 @@ DEFAULT_SETTINGS = {
     "auto_search_today": True,
     "last_folder_path": "",
     "last_save_path": "",
+    # 윈도우 크기/위치
     "window_width": 1100,
     "window_height": 750,
     "window_x": None,
     "window_y": None,
+    # 스플리터 상태 (각 영역 크기 저장)
+    "main_splitter_sizes": None,      # 좌/우 분할 [왼쪽너비, 오른쪽너비]
+    "vertical_splitter_sizes": None,  # 상/하 분할 [상단높이, 하단높이]
     # 사용자 프롬프트 (빈 문자열이면 코드 기본값 사용)
     "cleaning_prompt": "",
     "summary_prompt": "",
     "thanks_prompt": "",
     "devstatus_prompt": "",
+    # 마지막 분석 결과 (프로그램 재시작 시 복원)
+    "last_analysis_results": {
+        "documents_text": "",    # 1단계: 원본 텍스트
+        "cleaned_text": "",      # 2단계: 정리된 텍스트
+        "summary_text": "",      # 3단계: 회의록
+        "thanks_text": "",       # 4단계: 감사인사
+        "devstatus_text": "",    # 5단계: 개발현황
+    },
     # 분석 이력 (예상 시간 계산용) - 최근 10개 기록 유지
     # 형식: {"step_N": [{"text_len": int, "seconds": float}, ...]}
     "analysis_history": {
@@ -235,6 +247,31 @@ class SettingsManager:
             "window_y": y,
         })
     
+    # === 스플리터 상태 저장/복원 ===
+    
+    def get_splitter_sizes(self) -> Dict[str, Optional[list]]:
+        """스플리터 크기 반환"""
+        return {
+            "main": self.get("main_splitter_sizes"),
+            "vertical": self.get("vertical_splitter_sizes"),
+        }
+    
+    def set_splitter_sizes(
+        self,
+        main_sizes: Optional[list] = None,
+        vertical_sizes: Optional[list] = None
+    ) -> None:
+        """스플리터 크기 저장"""
+        settings_to_save = {}
+        if main_sizes is not None:
+            settings_to_save["main_splitter_sizes"] = main_sizes
+        if vertical_sizes is not None:
+            settings_to_save["vertical_splitter_sizes"] = vertical_sizes
+        
+        if settings_to_save:
+            self.set_multiple(settings_to_save)
+            logger.info(f"스플리터 상태 저장: main={main_sizes}, vertical={vertical_sizes}")
+    
     # === 프롬프트 설정 ===
     
     @property
@@ -272,6 +309,36 @@ class SettingsManager:
     @devstatus_prompt.setter
     def devstatus_prompt(self, value: str) -> None:
         self.set("devstatus_prompt", value)
+    
+    # === 분석 결과 저장/복원 ===
+    
+    def get_last_analysis_results(self) -> Dict[str, str]:
+        """마지막 분석 결과 반환"""
+        default_results = DEFAULT_SETTINGS.get("last_analysis_results", {})
+        return self.get("last_analysis_results", default_results)
+    
+    def save_analysis_results(
+        self,
+        documents_text: str = "",
+        cleaned_text: str = "",
+        summary_text: str = "",
+        thanks_text: str = "",
+        devstatus_text: str = ""
+    ) -> None:
+        """분석 결과 저장 (프로그램 재시작 시 복원용)"""
+        results = {
+            "documents_text": documents_text,
+            "cleaned_text": cleaned_text,
+            "summary_text": summary_text,
+            "thanks_text": thanks_text,
+            "devstatus_text": devstatus_text,
+        }
+        self.set("last_analysis_results", results)
+        logger.info("분석 결과 저장 완료")
+    
+    def clear_analysis_results(self) -> None:
+        """저장된 분석 결과 초기화"""
+        self.set("last_analysis_results", DEFAULT_SETTINGS.get("last_analysis_results", {}))
     
     def get_all_prompts(self) -> Dict[str, str]:
         """모든 사용자 프롬프트 반환"""

@@ -502,3 +502,5 @@ class PeriodAnalysisDialog(QDialog):
         self.ai_analyze_btn.setEnabled(True)
         self.ai_progress.setVisible(False)
 
+
+

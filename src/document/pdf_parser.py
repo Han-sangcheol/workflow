@@ -2,12 +2,13 @@
 PDF 파일 파싱 모듈
 PyMuPDF를 사용하여 PDF 파일의 텍스트를 추출합니다.
 세 가지 추출 모드 지원: simple, smart, layout
+업무일지 표 형식 데이터 1차 정리 기능 포함
 """
 
 import re
 import logging
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List, Tuple
 
 try:
     import fitz  # PyMuPDF
@@ -15,6 +16,35 @@ except ImportError:
     fitz = None
 
 logger = logging.getLogger(__name__)
+
+
+# 업무일지에서 제거할 노이즈 패턴들
+NOISE_PATTERNS = [
+    r'^결\s*$',           # 결재란 "결"
+    r'^재\s*$',           # 결재란 "재"
+    r'^작\s*성\s*$',      # 작성
+    r'^검\s*토\s*$',      # 검토
+    r'^승\s*인\s*$',      # 승인
+    r'^작성\s*$',
+    r'^검토\s*$', 
+    r'^승인\s*$',
+    r'^\d+\s*$',          # 단독 숫자 (페이지 번호 등)
+    r'^[\d\s]+%?\s*$',    # 숫자만 있는 줄 (진행률 단독)
+    r'^Unit\s*$',         # 단독 Unit
+    r'^Chair\s*$',        # 단독 Chair
+]
+
+# 업무일지 키워드 패턴
+WORK_LOG_KEYWORDS = [
+    '일 일 업 무 일 지',
+    '일일업무일지',
+    '금일업무',
+    '익일업무',
+    '목 적',
+    'Action',
+    '계획',
+    '달성',
+]
 
 
 class PDFParser:
@@ -147,4 +177,175 @@ class PDFParser:
         lines = [line.strip() for line in text.split('\n')]
         text = '\n'.join(lines)
         return text
+
+    def preprocess_work_log_text(self, text: str) -> str:
+        """
+        업무일지 텍스트 1차 정리 (AI 전달 전 전처리)
+        
+        PDF에서 추출된 표 형식의 텍스트를 정리하여 AI가 이해하기 쉬운 형태로 변환합니다.
+        
+        Args:
+            text: PDF에서 추출된 원본 텍스트
+            
+        Returns:
+            정리된 텍스트
+        """
+        if not text:
+            return text
+        
+        lines = text.split('\n')
+        cleaned_lines = []
+        
+        for line in lines:
+            line = line.strip()
+            
+            # 빈 줄 건너뛰기
+            if not line:
+                continue
+            
+            # 한 글자 줄 삭제 (의미 없는 단일 문자)
+            # 단, 숫자나 특수 기호는 유지할 수 있으므로 한글/영문 한 글자만 삭제
+            if len(line) == 1 and re.match(r'^[가-힣a-zA-Z]$', line):
+                continue
+            
+            # 두 글자 이하의 무의미한 줄도 삭제 (결재란 조각 등)
+            # 예: "금", "일", "업", "무" 등 깨진 텍스트
+            if len(line) <= 2 and re.match(r'^[가-힣]{1,2}$', line):
+                # 의미 있는 두 글자 단어는 유지 (목적, 완료 등)
+                meaningful_words = ['목적', '완료', '진행', '예정', '시작', '종료', '계획', '달성']
+                if line not in meaningful_words:
+                    continue
+            
+            # 노이즈 패턴 제거
+            is_noise = False
+            for pattern in NOISE_PATTERNS:
+                if re.match(pattern, line):
+                    is_noise = True
+                    break
+            
+            if is_noise:
+                continue
+            
+            # 결재란 헤더 제거 (작성 검토 승인 결 일일업무일지 이름 이름 이름 재)
+            if self._is_approval_header(line):
+                continue
+            
+            # 유의미한 줄 추가
+            cleaned_lines.append(line)
+        
+        # 텍스트 재구성
+        result = '\n'.join(cleaned_lines)
+        
+        # 추가 정리: 연속된 숫자 열 정리
+        result = self._clean_numeric_sequences(result)
+        
+        # 업무일지 구조 정리
+        result = self._restructure_work_log(result)
+        
+        return result
+    
+    def _is_approval_header(self, line: str) -> bool:
+        """결재란 헤더인지 확인"""
+        # 결재란 패턴들
+        approval_patterns = [
+            r'작\s*성\s+검\s*토\s+승\s*인',
+            r'작성\s+검토\s+승인',
+        ]
+        for pattern in approval_patterns:
+            if re.search(pattern, line):
+                return True
+        return False
+    
+    def _clean_numeric_sequences(self, text: str) -> str:
+        """연속된 숫자/진행률 시퀀스 정리"""
+        # 단독으로 있는 진행률 숫자들을 해당 줄과 합치기
+        # 예: "10 10 50 50" → 계획(H): 10, 달성(H): 10, 계획(%): 50, 달성(%): 50
+        
+        lines = text.split('\n')
+        result_lines = []
+        skip_next = False
+        
+        for i, line in enumerate(lines):
+            if skip_next:
+                skip_next = False
+                continue
+            
+            # 숫자 4개 패턴 (계획H 달성H 계획% 달성%)
+            numeric_match = re.match(
+                r'^(\d+)\s+(\d+)\s+(\d+%?)\s+(\d+%?)$', 
+                line.strip()
+            )
+            
+            if numeric_match and i > 0:
+                # 이전 줄에 진행률 추가
+                plan_h, done_h, plan_p, done_p = numeric_match.groups()
+                if result_lines:
+                    prev_line = result_lines[-1]
+                    # 진행률 정보를 이전 줄에 추가
+                    progress_info = f" [계획: {plan_h}H, 달성: {done_h}H, 진행률: {done_p}%]"
+                    result_lines[-1] = prev_line + progress_info
+                continue
+            
+            result_lines.append(line)
+        
+        return '\n'.join(result_lines)
+    
+    def _restructure_work_log(self, text: str) -> str:
+        """업무일지 구조 정리 - 팀원별 섹션 구분"""
+        # FW팀 [이름] 패턴으로 팀원 섹션 찾기
+        team_pattern = r'FW\s*팀\s+(\w+)\s+일자\s*[:：]?\s*(\d{4}[\.\-/]\d{1,2}[\.\-/]\d{1,2})'
+        
+        lines = text.split('\n')
+        result_lines = []
+        current_member = None
+        current_date = None
+        
+        for line in lines:
+            # 팀원 헤더 찾기
+            match = re.search(team_pattern, line)
+            if match:
+                current_member = match.group(1)
+                current_date = match.group(2)
+                result_lines.append("")
+                result_lines.append(f"========== {current_member} ({current_date}) ==========")
+                continue
+            
+            # "일 일 업 무 일 지" 패턴 정리
+            if '일 일 업 무 일 지' in line or '일일업무일지' in line:
+                continue  # 중복 제목 제거
+            
+            # "분류 구분 상세내용..." 헤더 제거
+            if re.match(r'^분류\s+구\s*분\s+상\s*세', line):
+                continue
+            
+            # 금일업무/익일업무 표시
+            if '금일업무' in line or '금' in line and '일' in line and '업' in line:
+                if '금일' not in line:
+                    line = line.replace('금', '금일').replace('일업무', '업무')
+                result_lines.append("")
+                result_lines.append("【금일업무】")
+                continue
+            
+            if '익일업무' in line or '익' in line and '일' in line and '업' in line:
+                result_lines.append("")
+                result_lines.append("【익일업무】")
+                continue
+            
+            # 프로젝트/업무 내용 정리
+            # "1 bright Simple..." 같은 프로젝트 시작
+            project_match = re.match(r'^(\d+)\s+(.+?(?:목표|개발|개선|준비|지원))', line)
+            if project_match:
+                result_lines.append(f"\n● 프로젝트: {line}")
+                continue
+            
+            # "1.1 목 적", "1.2 Action" 패턴
+            if re.match(r'^\d+\.\d+\s+(목\s*적|Action|목적)', line):
+                line = line.replace('목 적', '목적')
+                result_lines.append(f"  {line}")
+                continue
+            
+            # 일반 내용
+            result_lines.append(line)
+        
+        return '\n'.join(result_lines)
 

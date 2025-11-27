@@ -1,15 +1,18 @@
 """
 작업 스레드
 문서 파싱과 AI 분석을 백그라운드에서 수행합니다.
+PDF 추출 텍스트 1차 정리 후 AI에 전달합니다.
+선택된 단계만 실행하는 기능 지원.
 """
 
 import logging
 import time
-from typing import List
+from typing import List, Dict, Optional
 
 from PySide6.QtCore import QThread, Signal
 
 from ..document.document_parser import DocumentParser
+from ..document.pdf_parser import PDFParser
 from ..ai.ollama_client import OllamaClient
 
 logger = logging.getLogger(__name__)
@@ -39,7 +42,8 @@ class AnalysisWorker(QThread):
         cleaning_model: str = "llama3.2",
         summary_model: str = "llama3.2",
         thanks_model: str = "llama3.2",
-        devstatus_model: str = "llama3.2"
+        devstatus_model: str = "llama3.2",
+        selected_steps: Optional[Dict[str, bool]] = None
     ):
         """
         초기화
@@ -51,11 +55,18 @@ class AnalysisWorker(QThread):
             summary_model: 회의록 생성용 AI 모델
             thanks_model: 감사인사 생성용 AI 모델
             devstatus_model: 개발현황 생성용 AI 모델
+            selected_steps: 실행할 단계 선택 {"step2": bool, "step3": bool, ...}
         """
         super().__init__()
         self.file_paths = file_paths
         self.pdf_extraction_mode = pdf_extraction_mode
         self.doc_parser = DocumentParser()
+        self.pdf_parser = PDFParser()  # PDF 전처리용
+        
+        # 선택된 단계 (기본값: 모두 실행)
+        self.selected_steps = selected_steps or {
+            "step2": True, "step3": True, "step4": True, "step5": True
+        }
         
         # 각 단계별 AI 클라이언트 생성
         self.cleaning_client = OllamaClient(model=cleaning_model)
@@ -64,17 +75,19 @@ class AnalysisWorker(QThread):
         self.devstatus_client = OllamaClient(model=devstatus_model)
         self._is_cancelled = False
         
+        # 선택된 단계 로깅
+        selected_str = ", ".join([k for k, v in self.selected_steps.items() if v])
         logger.info(
             f"워커 초기화: PDF모드={pdf_extraction_mode}, "
             f"정리={cleaning_model}, 회의록={summary_model}, "
             f"감사={thanks_model}, 현황={devstatus_model}, "
-            f"파일={len(file_paths)}개"
+            f"파일={len(file_paths)}개, 선택단계=[{selected_str}]"
         )
 
     def run(self):
-        """작업 실행"""
+        """작업 실행 - 선택된 단계만 실행"""
         try:
-            # Step 1: 문서 파싱
+            # Step 1: 문서 파싱 (항상 실행)
             self.progress_updated.emit(
                 "Step 1: 문서 파일 읽기 중..."
             )
@@ -99,105 +112,126 @@ class AnalysisWorker(QThread):
             if self._is_cancelled:
                 return
             
-            # Step 2: 텍스트 정리 및 구조화
-            self.progress_updated.emit(
-                "Step 2: AI로 텍스트 정리 중..."
-            )
+            # Step 2: 텍스트 정리 및 구조화 (선택 시 실행)
+            cleaned_text = documents_text  # Step 2 건너뛸 경우 원본 사용
+            cleaned_len = documents_len
             
-            step2_start = time.time()
-            cleaned_text = self.cleaning_client.clean_and_organize(
-                documents_text,
-                progress_callback=self._ai_progress_callback
-            )
-            step2_time = time.time() - step2_start
-            
-            if not cleaned_text:
-                self.error_occurred.emit(
-                    "텍스트 정리 실패. Ollama가 실행 중인지 확인하세요"
+            if self.selected_steps.get("step2", True):
+                self.progress_updated.emit(
+                    "Step 2: AI로 텍스트 정리 중..."
                 )
-                return
-            
-            cleaned_len = len(cleaned_text)
-            self.text_cleaned.emit(cleaned_text)
-            self.step_completed.emit(2)
-            self.step_time_recorded.emit(2, step2_time)
-            self.step_analysis_recorded.emit(2, documents_len, step2_time)
-            
-            if self._is_cancelled:
-                return
-            
-            # Step 3: 통합 회의록 생성
-            self.progress_updated.emit(
-                "Step 3: AI로 회의록 생성 중..."
-            )
-            
-            step3_start = time.time()
-            summary = self.summary_client.generate_summary(
-                cleaned_text,  # 정리된 텍스트 사용
-                progress_callback=self._ai_progress_callback
-            )
-            step3_time = time.time() - step3_start
-            
-            if not summary:
-                self.error_occurred.emit(
-                    "회의록 생성 실패"
+                
+                step2_start = time.time()
+                cleaned_text = self.cleaning_client.clean_and_organize(
+                    documents_text,
+                    progress_callback=self._ai_progress_callback
                 )
-                return
-            
-            self.summary_ready.emit(summary)
-            self.step_completed.emit(3)
-            self.step_time_recorded.emit(3, step3_time)
-            self.step_analysis_recorded.emit(3, cleaned_len, step3_time)
-            
-            if self._is_cancelled:
-                return
-            
-            # Step 4: 감사 인사 생성
-            self.progress_updated.emit(
-                "Step 4: AI로 감사 인사 생성 중..."
-            )
-            
-            step4_start = time.time()
-            thanks = self.thanks_client.generate_thanks(
-                cleaned_text,  # 정리된 텍스트 사용
-                progress_callback=self._ai_progress_callback
-            )
-            step4_time = time.time() - step4_start
-            
-            if not thanks:
-                self.error_occurred.emit("감사 인사 생성 실패")
-                return
-            
-            self.thanks_ready.emit(thanks)
-            self.step_completed.emit(4)
-            self.step_time_recorded.emit(4, step4_time)
-            self.step_analysis_recorded.emit(4, cleaned_len, step4_time)
+                step2_time = time.time() - step2_start
+                
+                if not cleaned_text:
+                    self.error_occurred.emit(
+                        "텍스트 정리 실패. Ollama가 실행 중인지 확인하세요"
+                    )
+                    return
+                
+                cleaned_len = len(cleaned_text)
+                self.text_cleaned.emit(cleaned_text)
+                self.step_completed.emit(2)
+                self.step_time_recorded.emit(2, step2_time)
+                self.step_analysis_recorded.emit(2, documents_len, step2_time)
+            else:
+                self.progress_updated.emit("Step 2: 건너뜀 (미선택)")
+                self.step_completed.emit(2)
             
             if self._is_cancelled:
                 return
             
-            # Step 5: 개발 현황 생성
-            self.progress_updated.emit(
-                "Step 5: AI로 개발 현황 생성 중..."
-            )
+            # Step 3: 통합 회의록 생성 (선택 시 실행)
+            if self.selected_steps.get("step3", True):
+                self.progress_updated.emit(
+                    "Step 3: AI로 회의록 생성 중..."
+                )
+                
+                step3_start = time.time()
+                summary = self.summary_client.generate_summary(
+                    cleaned_text,  # 정리된 텍스트 사용
+                    progress_callback=self._ai_progress_callback
+                )
+                step3_time = time.time() - step3_start
+                
+                if not summary:
+                    self.error_occurred.emit(
+                        "회의록 생성 실패"
+                    )
+                    return
+                
+                self.summary_ready.emit(summary)
+                self.step_completed.emit(3)
+                self.step_time_recorded.emit(3, step3_time)
+                self.step_analysis_recorded.emit(3, cleaned_len, step3_time)
+            else:
+                self.progress_updated.emit("Step 3: 건너뜀 (미선택)")
+                self.step_completed.emit(3)
             
-            step5_start = time.time()
-            devstatus = self.devstatus_client.generate_devstatus(
-                cleaned_text,  # 정리된 텍스트 사용
-                progress_callback=self._ai_progress_callback
-            )
-            step5_time = time.time() - step5_start
-            
-            if not devstatus:
-                self.error_occurred.emit("개발 현황 생성 실패")
+            if self._is_cancelled:
                 return
             
-            self.devstatus_ready.emit(devstatus)
-            self.step_completed.emit(5)
-            self.step_time_recorded.emit(5, step5_time)
-            self.step_analysis_recorded.emit(5, cleaned_len, step5_time)
+            # Step 4: 감사 인사 생성 (선택 시 실행)
+            if self.selected_steps.get("step4", True):
+                self.progress_updated.emit(
+                    "Step 4: AI로 감사 인사 생성 중..."
+                )
+                
+                step4_start = time.time()
+                thanks = self.thanks_client.generate_thanks(
+                    cleaned_text,  # 정리된 텍스트 사용
+                    progress_callback=self._ai_progress_callback
+                )
+                step4_time = time.time() - step4_start
+                
+                if not thanks:
+                    self.error_occurred.emit("감사 인사 생성 실패")
+                    return
+                
+                self.thanks_ready.emit(thanks)
+                self.step_completed.emit(4)
+                self.step_time_recorded.emit(4, step4_time)
+                self.step_analysis_recorded.emit(4, cleaned_len, step4_time)
+            else:
+                self.progress_updated.emit("Step 4: 건너뜀 (미선택)")
+                self.step_completed.emit(4)
             
-            self.progress_updated.emit("모든 작업 완료!")
+            if self._is_cancelled:
+                return
+            
+            # Step 5: 개발 현황 생성 (선택 시 실행)
+            if self.selected_steps.get("step5", True):
+                self.progress_updated.emit(
+                    "Step 5: AI로 개발 현황 생성 중..."
+                )
+                
+                step5_start = time.time()
+                devstatus = self.devstatus_client.generate_devstatus(
+                    cleaned_text,  # 정리된 텍스트 사용
+                    progress_callback=self._ai_progress_callback
+                )
+                step5_time = time.time() - step5_start
+                
+                if not devstatus:
+                    self.error_occurred.emit("개발 현황 생성 실패")
+                    return
+                
+                self.devstatus_ready.emit(devstatus)
+                self.step_completed.emit(5)
+                self.step_time_recorded.emit(5, step5_time)
+                self.step_analysis_recorded.emit(5, cleaned_len, step5_time)
+            else:
+                self.progress_updated.emit("Step 5: 건너뜀 (미선택)")
+                self.step_completed.emit(5)
+            
+            # 완료 메시지
+            selected_count = sum(1 for v in self.selected_steps.values() if v)
+            self.progress_updated.emit(f"선택된 {selected_count}개 단계 작업 완료!")
             
         except Exception as e:
             logger.error(f"작업 중 오류: {str(e)}")
@@ -207,7 +241,7 @@ class AnalysisWorker(QThread):
             self.finished.emit()
 
     def _parse_documents(self) -> str:
-        """문서 파싱"""
+        """문서 파싱 및 1차 정리"""
         all_text = []
         
         for i, file_path in enumerate(self.file_paths, 1):
@@ -222,7 +256,16 @@ class AnalysisWorker(QThread):
                 file_path,
                 pdf_extraction_mode=self.pdf_extraction_mode
             )
+            
             if text:
+                # PDF 파일인 경우 1차 정리 수행
+                if file_path.lower().endswith('.pdf'):
+                    self.progress_updated.emit(
+                        f"파일 {i}/{len(self.file_paths)} 텍스트 정리 중..."
+                    )
+                    text = self.pdf_parser.preprocess_work_log_text(text)
+                    logger.info(f"PDF 전처리 완료: {file_path}")
+                
                 all_text.append(f"=== 파일: {file_path} ===\n{text}")
         
         return "\n\n".join(all_text)

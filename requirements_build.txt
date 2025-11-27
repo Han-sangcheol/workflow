@@ -7,3 +7,5 @@ pyinstaller>=6.0.0
 # 선택사항: 더 작은 실행 파일을 위한 최적화 도구
 # pyinstaller-hooks-contrib>=2024.0  # 추가 훅 지원 (필요시 활성화)
 
+
+

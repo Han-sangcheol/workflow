@@ -1,6 +1,7 @@
 """
 NVIDIA GPU 모니터링 (pynvml 사용)
 GPUtil 대신 더 안정적인 pynvml 사용
+에러 발생 시 반복 로그 방지 및 자동 비활성화
 """
 
 import logging
@@ -19,9 +20,15 @@ except ImportError:
 class NvidiaGPUMonitor:
     """NVIDIA GPU 모니터링 클래스"""
 
+    # 에러 발생 시 비활성화까지의 허용 횟수
+    MAX_ERROR_COUNT = 3
+
     def __init__(self):
         self.initialized = False
         self.device_count = 0
+        self._error_count = 0  # 연속 에러 횟수
+        self._disabled = False  # 에러로 인한 비활성화 상태
+        self._error_logged = False  # 에러 로그 출력 여부 (1회만)
         
         if PYNVML_AVAILABLE:
             try:
@@ -34,7 +41,7 @@ class NvidiaGPUMonitor:
 
     def is_available(self) -> bool:
         """NVIDIA GPU 사용 가능 여부"""
-        return self.initialized and self.device_count > 0
+        return self.initialized and self.device_count > 0 and not self._disabled
 
     def get_gpu_info(self) -> List[Tuple[str, int, int, int]]:
         """
@@ -43,7 +50,11 @@ class NvidiaGPUMonitor:
         Returns:
             List of (name, memory_used_mb, memory_total_mb, utilization_percent)
         """
-        if not self.is_available():
+        # 비활성화된 경우 빈 리스트 반환 (로그 없음)
+        if self._disabled:
+            return []
+        
+        if not self.initialized or self.device_count == 0:
             return []
 
         gpu_info = []
@@ -69,9 +80,25 @@ class NvidiaGPUMonitor:
                     gpu_util = 0
                 
                 gpu_info.append((name, memory_used, memory_total, gpu_util))
+            
+            # 성공하면 에러 카운트 리셋
+            self._error_count = 0
         
         except Exception as e:
-            logger.error(f"GPU 정보 읽기 실패: {e}")
+            self._error_count += 1
+            
+            # 에러 로그는 1회만 출력
+            if not self._error_logged:
+                logger.warning(f"GPU 정보 읽기 실패: {e}")
+                self._error_logged = True
+            
+            # 연속 에러 횟수 초과 시 GPU 모니터링 비활성화
+            if self._error_count >= self.MAX_ERROR_COUNT:
+                self._disabled = True
+                logger.info(
+                    f"GPU 정보 읽기 {self.MAX_ERROR_COUNT}회 연속 실패 - "
+                    "GPU 모니터링을 비활성화합니다."
+                )
         
         return gpu_info
 
@@ -82,5 +109,6 @@ class NvidiaGPUMonitor:
                 pynvml.nvmlShutdown()
                 logger.info("NVIDIA GPU 모니터링 종료")
             except Exception as e:
-                logger.error(f"pynvml 종료 실패: {e}")
+                # 종료 시 에러는 무시 (이미 종료된 상태일 수 있음)
+                pass
 
