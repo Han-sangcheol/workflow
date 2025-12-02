@@ -13,56 +13,37 @@ SYSTEM_PROMPT = """당신은 FW팀의 업무일지를 분석하고 정리하는 
 
 
 # 텍스트 정리 프롬프트 (1단계: 원본 텍스트 → 정리된 텍스트)
-CLEANING_PROMPT = """다음은 팀원들의 일일 업무일지 원본 텍스트입니다.
-업무일지 구조를 정확히 파악하여 아래 [출력 형식]에 맞춰 정리해주세요.
+# 목적: PDF에서 추출한 원본 텍스트의 구조를 정리 (내용 삭제/단축 금지)
+CLEANING_PROMPT = """다음은 여러 팀원의 일일 업무일지 원본 텍스트입니다.
+PDF에서 추출되어 구조가 깨져있으므로 읽기 쉽게 정리해주세요.
 
-[업무일지 원본 구조 - 반드시 이해할 것]
-각 팀원의 업무일지는 다음과 같은 표 구조입니다:
-- 헤더: "FW팀 [팀원명]" + "일자: YYYY.MM.DD"
-- 분류 열: "금일업무" 또는 "익일업무"
-- 구분 열: 프로젝트 대분류 (예: "Unit Chair bright Simple", "통합형 일렉모터 드라이버")
-- 상세내용 열: 프로젝트별 세부 업무 (번호, 목적, Action 등)
-- 수치 열: 계획(H), 달성(H), 계획(%), 달성(%)
+[핵심 규칙]
+1. 원본 내용 100% 유지 (삭제/요약 금지)
+2. 각 팀원의 업무는 해당 팀원에게만 작성 (혼동 금지)
+3. "=== 파일: ...FW팀 [이름]... ===" 구분자로 팀원 구분
 
-[핵심 지침 - 반드시 준수]
-1. **금일업무만 추출**: "분류"가 "금일업무"인 행만 추출. "익일업무"는 완전히 무시!
-2. **구분 열로 프로젝트 분류**: "구분" 열의 값이 프로젝트 대분류명입니다.
-   - 예: "Unit Chair bright Simple" → 프로젝트명: "bright Simple"
-   - 예: "통합형 일렉모터 드라이버 개발" → 프로젝트명: "통합형 일렉모터 드라이버"
-3. **모든 팀원 이름 추출**: 문서에서 "FW팀 [이름]" 패턴의 모든 팀원 이름을 추출
-4. **진행률 추출**: 계획(%)과 달성(%) 수치를 정확히 추출
-5. 중국어 간체자는 한국어로 변환
-
-[프로젝트 대분류 기준]
-다음 키워드로 프로젝트를 분류하세요:
-- "bright Simple" 또는 "Unit Chair" → [bright Simple]
-- "이송로봇" 또는 "WebGUI" 또는 "Display GUI" → [치과용 이송로봇]
-- "일렉모터" 또는 "드라이버" → [통합형 일렉모터 드라이버]
-- 기타 → 원본 구분명 유지
+[팀원 구분 방법]
+- "=== 파일: ...FW팀 김상일... ===" 이후 내용 → 김상일의 업무
+- "=== 파일: ...FW팀 강민성... ===" 이후 내용 → 강민성의 업무
+- 다음 "=== 파일:" 이 나오기 전까지가 해당 팀원의 업무입니다
 
 [출력 형식]
 ########## 팀원 목록 ##########
-[팀원1 이름], [팀원2 이름], [팀원3 이름], ...
+[이름1], [이름2], ...
 
-########## [팀원 이름] (YYYY.MM.DD) ##########
+########## [이름1] (YYYY.MM.DD) ##########
+【금일업무】
+• 프로젝트: [프로젝트명]
+  - 목적: [내용]
+  - Action: [내용]
+  - 진행률: [계획]% / [달성]%
 
-[프로젝트 대분류: bright Simple]
-• 세부 프로젝트: [상세내용의 프로젝트명]
-• 목적: [목적]
-• Action:
-  - [Action 항목 1]
-  - [Action 항목 2]
-• 진행률: 계획 OO% / 달성 OO%
+【익일업무】
+• 프로젝트: [프로젝트명]
+  - [내용]
 
-[프로젝트 대분류: 치과용 이송로봇]
-• 세부 프로젝트: [상세내용의 프로젝트명]
-• 목적: [목적]
-• Action:
-  - [Action 항목]
-• 진행률: 계획 OO% / 달성 OO%
-
-########## [다음 팀원 이름] (YYYY.MM.DD) ##########
-... (반복)
+########## [이름2] (YYYY.MM.DD) ##########
+(위와 동일한 형식으로 해당 팀원의 업무만 작성)
 
 [원본 텍스트]
 {documents_text}
@@ -174,10 +155,10 @@ THANKS_PROMPT = """다음은 정리된 팀원들의 일일 업무일지입니다
 [감사 인사 형식]
 ## 팀원별 감사 인사
 
-### [팀원1 이름]님께
+### [팀원1 이름]씨에게
 [개인화된 감사 메시지 - 구체적인 업무 내용 언급]
 
-### [팀원2 이름]님께
+### [팀원2 이름]씨에게
 [개인화된 감사 메시지 - 구체적인 업무 내용 언급]
 
 [정리된 업무일지]
@@ -352,15 +333,17 @@ PROJECT_RECOMMEND_PROMPT = """다음은 현재 진행 중인 프로젝트들의 
 
 # === 프롬프트 조회 함수 ===
 
-def get_prompt(prompt_type: str) -> str:
+def get_prompt(prompt_type: str, include_examples: bool = True) -> str:
     """
     프롬프트 반환 (사용자 설정 우선, 없으면 기본값)
+    예제가 등록되어 있으면 {examples} 플레이스홀더를 예제로 대체
     
     Args:
         prompt_type: "cleaning", "summary", "thanks", "devstatus" 중 하나
+        include_examples: True면 {examples} 플레이스홀더를 예제로 대체
         
     Returns:
-        프롬프트 문자열
+        프롬프트 문자열 (예제 포함)
     """
     # 순환 임포트 방지를 위해 함수 내에서 임포트
     from ..utils.settings_manager import get_settings
@@ -381,11 +364,42 @@ def get_prompt(prompt_type: str) -> str:
     user_prompts = settings.get_all_prompts()
     user_prompt = user_prompts.get(prompt_type, "")
     
-    # 사용자 프롬프트가 있으면 반환, 없으면 기본값 반환
+    # 사용자 프롬프트가 있으면 사용, 없으면 기본값
     if user_prompt and user_prompt.strip():
-        return user_prompt
+        prompt = user_prompt
+    else:
+        prompt = default_prompts.get(prompt_type, "")
     
-    return default_prompts.get(prompt_type, "")
+    # 예제 참조 처리
+    if include_examples and "{examples}" in prompt:
+        user_examples = settings.get_all_examples()
+        example = user_examples.get(prompt_type, "")
+        
+        if example and example.strip():
+            # 예제가 있으면 플레이스홀더 대체
+            prompt = prompt.replace("{examples}", example)
+        else:
+            # 예제가 없으면 플레이스홀더 제거
+            prompt = prompt.replace("{examples}", "")
+    
+    return prompt
+
+
+def get_example(prompt_type: str) -> str:
+    """
+    예제 반환
+    
+    Args:
+        prompt_type: "cleaning", "summary", "thanks", "devstatus" 중 하나
+        
+    Returns:
+        예제 문자열 (없으면 빈 문자열)
+    """
+    from ..utils.settings_manager import get_settings
+    
+    settings = get_settings()
+    user_examples = settings.get_all_examples()
+    return user_examples.get(prompt_type, "")
 
 
 def get_default_prompt(prompt_type: str) -> str:

@@ -24,3 +24,8 @@ INSTALLER_NAME = f"WorkflowAnalyzer_Setup_{APP_VERSION}.exe"
 
 
 
+
+
+
+
+

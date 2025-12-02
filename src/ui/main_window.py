@@ -66,6 +66,7 @@ class MainWindow(QMainWindow):
         self._apply_saved_settings()  # 저장된 설정 적용
         self._check_and_start_ollama()
         self._load_available_models()
+        self._restore_file_list()  # 저장된 파일 목록 복원
 
     def _init_ui(self):
         """UI 초기화"""
@@ -215,9 +216,34 @@ class MainWindow(QMainWindow):
         pdf_mode_layout.addStretch()
         layout.addLayout(pdf_mode_layout)
         
-        # 파일 목록
+        # 파일 목록 관리 버튼
+        file_manage_layout = QHBoxLayout()
+        
+        self.delete_selected_btn = QPushButton("🗑️ 선택 삭제")
+        self.delete_selected_btn.setToolTip("선택된 파일을 목록에서 삭제합니다")
+        self.delete_selected_btn.clicked.connect(self._on_delete_selected_files)
+        self.delete_selected_btn.setEnabled(False)
+        file_manage_layout.addWidget(self.delete_selected_btn)
+        
+        self.clear_list_btn = QPushButton("🔄 목록 초기화")
+        self.clear_list_btn.setToolTip("파일 목록을 모두 지웁니다")
+        self.clear_list_btn.clicked.connect(self._on_clear_file_list)
+        self.clear_list_btn.setEnabled(False)
+        file_manage_layout.addWidget(self.clear_list_btn)
+        
+        file_manage_layout.addStretch()
+        
+        self.file_count_label = QLabel("")
+        self.file_count_label.setStyleSheet("color: gray; font-size: 9pt;")
+        file_manage_layout.addWidget(self.file_count_label)
+        
+        layout.addLayout(file_manage_layout)
+        
+        # 파일 목록 (다중 선택 가능)
         self.file_list = QListWidget()
         self.file_list.setMinimumHeight(60)
+        self.file_list.setSelectionMode(QListWidget.SelectionMode.ExtendedSelection)
+        self.file_list.itemSelectionChanged.connect(self._on_file_selection_changed)
         layout.addWidget(self.file_list)
         
         return group
@@ -589,7 +615,8 @@ class MainWindow(QMainWindow):
             # 모든 지원 파일 검색
             files = self._find_all_supported_files(folder)
         
-        self._update_file_list(files)
+        # 기존 목록에 추가 (중복 제거)
+        self._update_file_list(files, append=True)
 
     @Slot()
     def _on_manual_select(self):
@@ -606,9 +633,9 @@ class MainWindow(QMainWindow):
         
         if files:
             # 선택한 파일의 폴더 저장
-            from pathlib import Path
             self.settings.last_folder_path = str(Path(files[0]).parent)
-            self._update_file_list(files)
+            # 기존 목록에 추가 (중복 제거)
+            self._update_file_list(files, append=True)
 
     def _find_all_supported_files(self, folder: str) -> List[str]:
         """폴더에서 지원되는 모든 파일 찾기"""
@@ -622,27 +649,106 @@ class MainWindow(QMainWindow):
         
         return sorted(files)
 
-    def _update_file_list(self, files: List[str]):
-        """파일 목록 업데이트"""
-        self.file_list.clear()
+    def _update_file_list(self, files: List[str], append: bool = False):
+        """파일 목록 업데이트
         
+        Args:
+            files: 추가할 파일 경로 목록
+            append: True면 기존 목록에 추가, False면 대체
+        """
         valid_files = self.file_selector.validate_files(files)
         
-        if not valid_files:
+        if append and hasattr(self, '_selected_files'):
+            # 기존 파일과 병합 (중복 제거)
+            existing_set = set(self._selected_files)
+            for f in valid_files:
+                if f not in existing_set:
+                    self._selected_files.append(f)
+        else:
+            self._selected_files = valid_files
+        
+        # UI 업데이트
+        self.file_list.clear()
+        
+        if not self._selected_files:
             self.status_label.setText("유효한 파일이 없습니다")
             self.analyze_btn.setEnabled(False)
+            self.clear_list_btn.setEnabled(False)
+            self.file_count_label.setText("")
             return
         
-        for file_path in valid_files:
+        for file_path in self._selected_files:
             self.file_list.addItem(Path(file_path).name)
         
         self.status_label.setText(
-            f"{len(valid_files)}개 파일 선택됨"
+            f"{len(self._selected_files)}개 파일 선택됨"
         )
         self.analyze_btn.setEnabled(True)
+        self.clear_list_btn.setEnabled(True)
+        self.file_count_label.setText(f"총 {len(self._selected_files)}개")
         
-        # 내부 저장
-        self._selected_files = valid_files
+        # 설정에 파일 목록 저장
+        self.settings.save_file_list(self._selected_files)
+    
+    @Slot()
+    def _on_file_selection_changed(self):
+        """파일 목록에서 선택 변경 시 호출"""
+        selected_count = len(self.file_list.selectedItems())
+        self.delete_selected_btn.setEnabled(selected_count > 0)
+    
+    @Slot()
+    def _on_delete_selected_files(self):
+        """선택된 파일을 목록에서 삭제"""
+        selected_items = self.file_list.selectedItems()
+        if not selected_items:
+            return
+        
+        # 선택된 항목의 인덱스를 역순으로 정렬 (뒤에서부터 삭제)
+        indices = sorted([self.file_list.row(item) for item in selected_items], reverse=True)
+        
+        for idx in indices:
+            self.file_list.takeItem(idx)
+            if hasattr(self, '_selected_files') and idx < len(self._selected_files):
+                self._selected_files.pop(idx)
+        
+        # 상태 업데이트
+        remaining = len(self._selected_files) if hasattr(self, '_selected_files') else 0
+        
+        if remaining > 0:
+            self.status_label.setText(f"{remaining}개 파일 선택됨")
+            self.file_count_label.setText(f"총 {remaining}개")
+            self.settings.save_file_list(self._selected_files)
+        else:
+            self.status_label.setText("파일을 선택하세요")
+            self.file_count_label.setText("")
+            self.analyze_btn.setEnabled(False)
+            self.clear_list_btn.setEnabled(False)
+            self.settings.clear_file_list()
+        
+        self.delete_selected_btn.setEnabled(False)
+    
+    @Slot()
+    def _on_clear_file_list(self):
+        """파일 목록 초기화"""
+        reply = QMessageBox.question(
+            self,
+            "목록 초기화",
+            "파일 목록을 모두 지우시겠습니까?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+        
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        
+        self.file_list.clear()
+        self._selected_files = []
+        self.status_label.setText("파일을 선택하세요")
+        self.file_count_label.setText("")
+        self.analyze_btn.setEnabled(False)
+        self.clear_list_btn.setEnabled(False)
+        self.delete_selected_btn.setEnabled(False)
+        self.settings.clear_file_list()
 
     @Slot()
     def _on_analyze(self):
@@ -1347,6 +1453,23 @@ class MainWindow(QMainWindow):
             combo.setCurrentText("llama3.2:latest")
         elif models:
             combo.setCurrentIndex(0)
+    
+    def _restore_file_list(self):
+        """저장된 파일 목록 복원"""
+        saved_files = self.settings.last_file_list
+        
+        if not saved_files:
+            return
+        
+        # 존재하는 파일만 필터링
+        existing_files = [f for f in saved_files if Path(f).exists()]
+        
+        if existing_files:
+            self._update_file_list(existing_files)
+            logger.info(f"저장된 파일 목록 복원: {len(existing_files)}개")
+        else:
+            # 모든 파일이 삭제된 경우 설정 초기화
+            self.settings.clear_file_list()
 
     @Slot(str)
     def _on_cleaning_model_changed(self, model_name: str):

@@ -52,6 +52,11 @@ DEFAULT_SETTINGS = {
     "summary_prompt": "",
     "thanks_prompt": "",
     "devstatus_prompt": "",
+    # 사용자 예제 (프롬프트에서 {examples} 플레이스홀더로 참조)
+    "cleaning_examples": "",
+    "summary_examples": "",
+    "thanks_examples": "",
+    "devstatus_examples": "",
     # 마지막 분석 결과 (프로그램 재시작 시 복원)
     "last_analysis_results": {
         "documents_text": "",    # 1단계: 원본 텍스트
@@ -69,6 +74,8 @@ DEFAULT_SETTINGS = {
         "step_4": [],  # 감사인사 생성
         "step_5": [],  # 개발현황 생성
     },
+    # 마지막으로 선택된 파일 목록 (프로그램 재시작 시 복원)
+    "last_file_list": [],
 }
 
 
@@ -364,6 +371,68 @@ class SettingsManager:
             "devstatus_prompt": devstatus,
         })
     
+    # === 예제 설정 (프롬프트에서 참조용) ===
+    
+    @property
+    def cleaning_examples(self) -> str:
+        """텍스트 정리용 예제 (프롬프트에서 {examples}로 참조)"""
+        return self.get("cleaning_examples", "")
+    
+    @cleaning_examples.setter
+    def cleaning_examples(self, value: str) -> None:
+        self.set("cleaning_examples", value)
+    
+    @property
+    def summary_examples(self) -> str:
+        """통합 회의록용 예제"""
+        return self.get("summary_examples", "")
+    
+    @summary_examples.setter
+    def summary_examples(self, value: str) -> None:
+        self.set("summary_examples", value)
+    
+    @property
+    def thanks_examples(self) -> str:
+        """감사 인사용 예제"""
+        return self.get("thanks_examples", "")
+    
+    @thanks_examples.setter
+    def thanks_examples(self, value: str) -> None:
+        self.set("thanks_examples", value)
+    
+    @property
+    def devstatus_examples(self) -> str:
+        """개발 현황용 예제"""
+        return self.get("devstatus_examples", "")
+    
+    @devstatus_examples.setter
+    def devstatus_examples(self, value: str) -> None:
+        self.set("devstatus_examples", value)
+    
+    def get_all_examples(self) -> Dict[str, str]:
+        """모든 사용자 예제 반환"""
+        return {
+            "cleaning": self.cleaning_examples,
+            "summary": self.summary_examples,
+            "thanks": self.thanks_examples,
+            "devstatus": self.devstatus_examples,
+        }
+    
+    def set_all_examples(
+        self,
+        cleaning: str = "",
+        summary: str = "",
+        thanks: str = "",
+        devstatus: str = ""
+    ) -> None:
+        """모든 예제 한번에 저장 (자동 저장)"""
+        self.set_multiple({
+            "cleaning_examples": cleaning,
+            "summary_examples": summary,
+            "thanks_examples": thanks,
+            "devstatus_examples": devstatus,
+        })
+    
     # === 분석 이력 관리 (예상 시간 계산용) ===
     
     MAX_HISTORY_COUNT = 10  # 스텝당 최대 이력 수
@@ -455,6 +524,27 @@ class SettingsManager:
         
         result["total"] = total if has_estimate else None
         return result
+    
+    # === 파일 목록 저장/복원 ===
+    
+    @property
+    def last_file_list(self) -> list:
+        """마지막으로 선택된 파일 목록"""
+        return self.get("last_file_list", [])
+    
+    @last_file_list.setter
+    def last_file_list(self, value: list) -> None:
+        self.set("last_file_list", value)
+    
+    def save_file_list(self, files: list) -> None:
+        """파일 목록 저장"""
+        self.last_file_list = files
+        logger.info(f"파일 목록 저장: {len(files)}개")
+    
+    def clear_file_list(self) -> None:
+        """저장된 파일 목록 초기화"""
+        self.last_file_list = []
+        logger.info("파일 목록 초기화")
 
 
 # 전역 설정 인스턴스

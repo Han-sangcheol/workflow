@@ -526,3 +526,8 @@ class ProjectManagerDialog(QDialog):
 
 
 
+
+
+
+
+
