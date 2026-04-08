@@ -332,7 +332,7 @@ class PDFParser:
                 continue
             
             # 프로젝트/업무 내용 정리
-            # "1 bright Simple..." 같은 프로젝트 시작
+            # "1 프로젝트명..." 같은 프로젝트 시작
             project_match = re.match(r'^(\d+)\s+(.+?(?:목표|개발|개선|준비|지원))', line)
             if project_match:
                 result_lines.append(f"\n● 프로젝트: {line}")
@@ -348,4 +348,3 @@ class PDFParser:
             result_lines.append(line)
         
         return '\n'.join(result_lines)
-

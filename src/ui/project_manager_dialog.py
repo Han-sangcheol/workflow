@@ -20,6 +20,7 @@ from PySide6.QtGui import QFont, QColor
 
 from ..database.db_manager import get_db_manager
 from ..ai.ollama_client import OllamaClient
+from ..utils.settings_manager import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -32,18 +33,31 @@ class AIRecommendWorker(QThread):
     error = Signal(str)
     finished = Signal()
     
-    def __init__(self, project_data: str, model: str = "llama3.2:latest"):
+    def __init__(
+        self,
+        project_data: str,
+        model: str = "llama3.2:latest",
+        ai_provider: str = "ollama",
+        ai_base_url: str = "http://localhost:11434",
+        ai_api_key: str = ""
+    ):
         super().__init__()
         self.project_data = project_data
         self.model = model
+        self.ai_provider = ai_provider
+        self.ai_base_url = ai_base_url
+        self.ai_api_key = ai_api_key
     
     def run(self):
         try:
             self.progress.emit("AI 분석 중...")
             
-            client = OllamaClient(model=self.model)
+            client = OllamaClient(
+                base_url=self.ai_base_url, model=self.model,
+                provider=self.ai_provider, api_key=self.ai_api_key
+            )
             if not client.is_available():
-                self.error.emit("Ollama 서버에 연결할 수 없습니다.")
+                self.error.emit("AI 서버에 연결할 수 없습니다.")
                 return
             
             result = client.generate_project_recommendation(self.project_data)
@@ -466,8 +480,14 @@ class ProjectManagerDialog(QDialog):
             self.ai_progress.setVisible(True)
             self.ai_progress.setRange(0, 0)
             
-            # 워커 시작
-            self.worker = AIRecommendWorker(project_data)
+            # 워커 시작 (현재 AI 제공자 설정 사용)
+            settings = get_settings()
+            self.worker = AIRecommendWorker(
+                project_data,
+                ai_provider=settings.ai_provider,
+                ai_base_url=settings.get_provider_base_url(),
+                ai_api_key=settings.get_api_key_for_provider()
+            )
             self.worker.progress.connect(self._on_ai_progress)
             self.worker.result_ready.connect(self._on_ai_result)
             self.worker.error.connect(self._on_ai_error)

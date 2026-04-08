@@ -39,11 +39,8 @@ class AnalysisWorker(QThread):
         self,
         file_paths: List[str],
         pdf_extraction_mode: str = "smart",
-        cleaning_model: str = "llama3.2",
-        summary_model: str = "llama3.2",
-        thanks_model: str = "llama3.2",
-        devstatus_model: str = "llama3.2",
-        selected_steps: Optional[Dict[str, bool]] = None
+        selected_steps: Optional[Dict[str, bool]] = None,
+        step_configs: Optional[Dict[str, Dict[str, str]]] = None
     ):
         """
         초기화
@@ -51,11 +48,12 @@ class AnalysisWorker(QThread):
         Args:
             file_paths: 분석할 파일 경로 리스트
             pdf_extraction_mode: PDF 추출 모드 (simple, smart, layout)
-            cleaning_model: 텍스트 정리용 AI 모델
-            summary_model: 회의록 생성용 AI 모델
-            thanks_model: 감사인사 생성용 AI 모델
-            devstatus_model: 개발현황 생성용 AI 모델
             selected_steps: 실행할 단계 선택 {"step2": bool, "step3": bool, ...}
+            step_configs: 단계별 AI 설정
+                {
+                    "cleaning": {"provider": str, "model": str, "base_url": str, "api_key": str},
+                    "summary": {...}, "thanks": {...}, "devstatus": {...}
+                }
         """
         super().__init__()
         self.file_paths = file_paths
@@ -68,20 +66,47 @@ class AnalysisWorker(QThread):
             "step2": True, "step3": True, "step4": True, "step5": True
         }
         
-        # 각 단계별 AI 클라이언트 생성
-        self.cleaning_client = OllamaClient(model=cleaning_model)
-        self.summary_client = OllamaClient(model=summary_model)
-        self.thanks_client = OllamaClient(model=thanks_model)
-        self.devstatus_client = OllamaClient(model=devstatus_model)
+        # 기본 설정
+        default_config = {
+            "provider": "ollama", "model": "llama3.2:latest",
+            "base_url": "http://localhost:11434", "api_key": ""
+        }
+        step_configs = step_configs or {}
+        
+        # 각 단계별 설정 가져오기
+        cleaning_cfg = step_configs.get("cleaning", default_config)
+        summary_cfg = step_configs.get("summary", default_config)
+        thanks_cfg = step_configs.get("thanks", default_config)
+        devstatus_cfg = step_configs.get("devstatus", default_config)
+        
+        # 각 단계별 AI 클라이언트 생성 (개별 제공자 정보)
+        self.cleaning_client = OllamaClient(
+            base_url=cleaning_cfg["base_url"], model=cleaning_cfg["model"],
+            provider=cleaning_cfg["provider"], api_key=cleaning_cfg["api_key"]
+        )
+        self.summary_client = OllamaClient(
+            base_url=summary_cfg["base_url"], model=summary_cfg["model"],
+            provider=summary_cfg["provider"], api_key=summary_cfg["api_key"]
+        )
+        self.thanks_client = OllamaClient(
+            base_url=thanks_cfg["base_url"], model=thanks_cfg["model"],
+            provider=thanks_cfg["provider"], api_key=thanks_cfg["api_key"]
+        )
+        self.devstatus_client = OllamaClient(
+            base_url=devstatus_cfg["base_url"], model=devstatus_cfg["model"],
+            provider=devstatus_cfg["provider"], api_key=devstatus_cfg["api_key"]
+        )
         self._is_cancelled = False
         
         # 선택된 단계 로깅
         selected_str = ", ".join([k for k, v in self.selected_steps.items() if v])
         logger.info(
-            f"워커 초기화: PDF모드={pdf_extraction_mode}, "
-            f"정리={cleaning_model}, 회의록={summary_model}, "
-            f"감사={thanks_model}, 현황={devstatus_model}, "
-            f"파일={len(file_paths)}개, 선택단계=[{selected_str}]"
+            f"워커 초기화: PDF모드={pdf_extraction_mode}, 파일={len(file_paths)}개, "
+            f"정리={cleaning_cfg['provider']}/{cleaning_cfg['model']}, "
+            f"회의록={summary_cfg['provider']}/{summary_cfg['model']}, "
+            f"감사={thanks_cfg['provider']}/{thanks_cfg['model']}, "
+            f"현황={devstatus_cfg['provider']}/{devstatus_cfg['model']}, "
+            f"선택단계=[{selected_str}]"
         )
 
     def run(self):
@@ -276,7 +301,19 @@ class AnalysisWorker(QThread):
             self.ai_thinking.emit(chunk)
 
     def cancel(self):
-        """작업 취소"""
+        """작업 취소 - AI 클라이언트도 즉시 중단"""
         self._is_cancelled = True
-        logger.info("작업 취소 요청됨")
+        logger.info("작업 취소 요청됨 - AI 클라이언트 중단 시작")
+        
+        # 모든 AI 클라이언트 즉시 취소 (진행 중인 HTTP 연결 강제 종료)
+        if hasattr(self, 'cleaning_client') and self.cleaning_client:
+            self.cleaning_client.cancel()
+        if hasattr(self, 'summary_client') and self.summary_client:
+            self.summary_client.cancel()
+        if hasattr(self, 'thanks_client') and self.thanks_client:
+            self.thanks_client.cancel()
+        if hasattr(self, 'devstatus_client') and self.devstatus_client:
+            self.devstatus_client.cancel()
+        
+        logger.info("모든 AI 클라이언트 취소 완료")
 

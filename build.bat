@@ -3,92 +3,92 @@ chcp 65001 >nul
 setlocal enabledelayedexpansion
 
 echo ============================================================
-echo   업무일지 AI 분석 시스템 - 빌드 스크립트
+echo   Workflow AI Analysis System - Build Script
 echo ============================================================
 echo.
 
-REM 현재 디렉토리를 스크립트 위치로 변경
+REM Change to script directory
 cd /d "%~dp0"
 
-REM 가상환경 Python 경로 설정
+REM Set virtual environment Python path
 set "VENV_PYTHON=%~dp0.venv\Scripts\python.exe"
 
-REM 가상환경 확인
+REM Check virtual environment
 if not exist "%VENV_PYTHON%" (
-    echo [오류] 가상환경을 찾을 수 없습니다: %VENV_PYTHON%
-    echo [!] 먼저 가상환경을 생성하세요.
+    echo [ERROR] Virtual environment not found: %VENV_PYTHON%
+    echo [!] Please create a virtual environment first.
     pause
     exit /b 1
 )
 
-echo [1/4] 가상환경 Python 사용: %VENV_PYTHON%
+echo [1/4] Using virtual environment Python: %VENV_PYTHON%
 
-REM pip 설치 확인 및 설치
+REM Check and install pip
 echo.
-echo [2/4] 빌드 도구 확인 중...
+echo [2/4] Checking build tools...
 "%VENV_PYTHON%" -m pip --version >nul 2>&1
 if errorlevel 1 (
-    echo [!] pip가 가상환경에 없습니다. 설치 중...
+    echo [!] pip not found in virtual environment. Installing...
     "%VENV_PYTHON%" -m ensurepip --upgrade
     if errorlevel 1 (
-        echo [오류] pip 설치에 실패했습니다.
+        echo [ERROR] Failed to install pip.
         pause
         exit /b 1
     )
-    echo [완료] pip 설치 완료
+    echo [DONE] pip installed successfully
 )
 
-REM PyInstaller 설치 확인
+REM Check PyInstaller installation
 "%VENV_PYTHON%" -m PyInstaller --version >nul 2>&1
 if errorlevel 1 (
-    echo [!] PyInstaller가 가상환경에 설치되어 있지 않습니다.
-    echo [!] pip를 사용하여 설치 중...
+    echo [!] PyInstaller is not installed in virtual environment.
+    echo [!] Installing via pip...
     "%VENV_PYTHON%" -m pip install pyinstaller
     if errorlevel 1 (
-        echo [오류] PyInstaller 설치에 실패했습니다.
+        echo [ERROR] Failed to install PyInstaller.
         pause
         exit /b 1
     )
-    echo [완료] PyInstaller 설치 완료
+    echo [DONE] PyInstaller installed successfully
 )
 
-REM 아이콘 생성 (Pillow 필요)
+REM Create icon (requires Pillow)
 echo.
-echo [2.5/4] 아이콘 생성 중...
+echo [2.5/4] Creating icon...
 if not exist "resources\icon.ico" (
     "%VENV_PYTHON%" -c "import PIL" >nul 2>&1
     if errorlevel 1 (
-        echo [!] Pillow 설치 중...
+        echo [!] Installing Pillow...
         "%VENV_PYTHON%" -m pip install Pillow
     )
     "%VENV_PYTHON%" build\create_icon.py
 )
 
-REM 빌드 실행
+REM Run build
 echo.
-echo [3/4] 빌드 시작...
+echo [3/4] Starting build...
 echo.
 "%VENV_PYTHON%" build\build.py --clean %*
 
 if errorlevel 1 (
     echo.
-    echo [오류] 빌드에 실패했습니다.
+    echo [ERROR] Build failed.
     pause
     exit /b 1
 )
 
 echo.
-echo [4/4] 빌드 완료!
+echo [4/4] Build complete!
 echo.
 echo ============================================================
-echo   결과물 위치:
-echo   - 실행 파일: dist\WorkflowAnalyzer\WorkflowAnalyzer.exe
-echo   - 설치 프로그램: dist\installer\WorkflowAnalyzer_Setup_*.exe
+echo   Output location:
+echo   - Executable: dist\WorkflowAnalyzer\WorkflowAnalyzer.exe
+echo   - Installer: dist\installer\WorkflowAnalyzer_Setup_*.exe
 echo ============================================================
 echo.
 
-REM 결과물 폴더 열기 옵션
-set /p OPEN_FOLDER="결과물 폴더를 열까요? (Y/N): "
+REM Option to open output folder
+set /p OPEN_FOLDER="Open output folder? (Y/N): "
 if /i "!OPEN_FOLDER!"=="Y" (
     if exist "dist\installer" (
         explorer "dist\installer"
@@ -98,4 +98,3 @@ if /i "!OPEN_FOLDER!"=="Y" (
 )
 
 endlocal
-

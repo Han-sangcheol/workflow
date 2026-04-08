@@ -6,6 +6,7 @@ Ollama 서버 관리
 import logging
 import subprocess
 import platform
+import sys
 import time
 from typing import Optional
 
@@ -15,6 +16,18 @@ except ImportError:
     requests = None
 
 logger = logging.getLogger(__name__)
+
+
+def _get_subprocess_kwargs():
+    """Windows에서 콘솔 창 숨김을 위한 subprocess 인자 반환"""
+    kwargs = {}
+    if sys.platform == 'win32':
+        startupinfo = subprocess.STARTUPINFO()
+        startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+        startupinfo.wShowWindow = subprocess.SW_HIDE
+        kwargs['startupinfo'] = startupinfo
+        kwargs['creationflags'] = subprocess.CREATE_NO_WINDOW
+    return kwargs
 
 
 class OllamaManager:
@@ -100,10 +113,13 @@ class OllamaManager:
     def _is_ollama_installed(self) -> bool:
         """Ollama 설치 여부 확인"""
         try:
+            # Windows에서 콘솔 창 숨김
+            kwargs = _get_subprocess_kwargs()
             result = subprocess.run(
                 ["ollama", "--version"],
                 capture_output=True,
-                timeout=3
+                timeout=3,
+                **kwargs
             )
             return result.returncode == 0
         except Exception:

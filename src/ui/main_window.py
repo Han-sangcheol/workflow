@@ -27,7 +27,7 @@ from .styles import APP_STYLE
 from ..utils.file_selector import FileSelector
 from ..utils.output_generator import OutputGenerator
 from ..utils.ollama_manager import OllamaManager
-from ..utils.settings_manager import get_settings
+from ..utils.settings_manager import get_settings, AI_PROVIDERS
 from ..utils.task_parser import TaskParser
 from ..ai.ollama_client import OllamaClient
 from ..database.db_manager import get_db_manager
@@ -249,41 +249,62 @@ class MainWindow(QMainWindow):
         return group
 
     def _create_model_selection_area(self) -> QWidget:
-        """AI 모델 선택 영역 생성 (각 단계별 별도 선택)"""
-        group = QGroupBox("🤖 AI 모델 설정 (단계별)")
+        """AI 모델 선택 영역 생성 (각 단계별 제공자+모델 선택)"""
+        group = QGroupBox("🤖 AI 설정 (단계별 제공자 선택)")
         layout = QVBoxLayout(group)
         
-        # 모델 선택 레이아웃 (2x2 그리드 형태로 배치)
+        # 제공자별 모델 캐시 (제공자 변경 시 재사용)
+        self._provider_models_cache = {}
+        
+        # === 모델 선택 레이아웃 (2x2 그리드 형태로 배치) ===
         model_grid = QHBoxLayout()
         
         # 왼쪽 컬럼: 정리, 회의록
         left_col = QVBoxLayout()
         
-        # 1. 텍스트 정리용 모델
+        # 1. 텍스트 정리
         cleaning_layout = QHBoxLayout()
         cleaning_label = QLabel("1️⃣ 텍스트 정리:")
-        cleaning_label.setMinimumWidth(100)
+        cleaning_label.setMinimumWidth(95)
         cleaning_layout.addWidget(cleaning_label)
         
+        self.cleaning_provider_combo = QComboBox()
+        self.cleaning_provider_combo.setMinimumWidth(85)
+        for key, info in AI_PROVIDERS.items():
+            self.cleaning_provider_combo.addItem(info["name"], key)
+        self.cleaning_provider_combo.currentIndexChanged.connect(
+            lambda: self._on_step_provider_changed("cleaning")
+        )
+        cleaning_layout.addWidget(self.cleaning_provider_combo)
+        
         self.cleaning_model_combo = QComboBox()
-        self.cleaning_model_combo.setMinimumWidth(180)
+        self.cleaning_model_combo.setMinimumWidth(150)
         self.cleaning_model_combo.currentTextChanged.connect(
-            self._on_cleaning_model_changed
+            lambda t: self._on_step_model_changed("cleaning", t)
         )
         cleaning_layout.addWidget(self.cleaning_model_combo)
         cleaning_layout.addStretch()
         left_col.addLayout(cleaning_layout)
         
-        # 2. 회의록 생성용 모델
+        # 2. 회의록 생성
         summary_layout = QHBoxLayout()
         summary_label = QLabel("2️⃣ 회의록 생성:")
-        summary_label.setMinimumWidth(100)
+        summary_label.setMinimumWidth(95)
         summary_layout.addWidget(summary_label)
         
+        self.summary_provider_combo = QComboBox()
+        self.summary_provider_combo.setMinimumWidth(85)
+        for key, info in AI_PROVIDERS.items():
+            self.summary_provider_combo.addItem(info["name"], key)
+        self.summary_provider_combo.currentIndexChanged.connect(
+            lambda: self._on_step_provider_changed("summary")
+        )
+        summary_layout.addWidget(self.summary_provider_combo)
+        
         self.summary_model_combo = QComboBox()
-        self.summary_model_combo.setMinimumWidth(180)
+        self.summary_model_combo.setMinimumWidth(150)
         self.summary_model_combo.currentTextChanged.connect(
-            self._on_summary_model_changed
+            lambda t: self._on_step_model_changed("summary", t)
         )
         summary_layout.addWidget(self.summary_model_combo)
         summary_layout.addStretch()
@@ -294,31 +315,49 @@ class MainWindow(QMainWindow):
         # 오른쪽 컬럼: 감사인사, 개발현황
         right_col = QVBoxLayout()
         
-        # 3. 감사인사 생성용 모델
+        # 3. 감사인사 생성
         thanks_layout = QHBoxLayout()
         thanks_label = QLabel("3️⃣ 감사 인사:")
-        thanks_label.setMinimumWidth(100)
+        thanks_label.setMinimumWidth(95)
         thanks_layout.addWidget(thanks_label)
         
+        self.thanks_provider_combo = QComboBox()
+        self.thanks_provider_combo.setMinimumWidth(85)
+        for key, info in AI_PROVIDERS.items():
+            self.thanks_provider_combo.addItem(info["name"], key)
+        self.thanks_provider_combo.currentIndexChanged.connect(
+            lambda: self._on_step_provider_changed("thanks")
+        )
+        thanks_layout.addWidget(self.thanks_provider_combo)
+        
         self.thanks_model_combo = QComboBox()
-        self.thanks_model_combo.setMinimumWidth(180)
+        self.thanks_model_combo.setMinimumWidth(150)
         self.thanks_model_combo.currentTextChanged.connect(
-            self._on_thanks_model_changed
+            lambda t: self._on_step_model_changed("thanks", t)
         )
         thanks_layout.addWidget(self.thanks_model_combo)
         thanks_layout.addStretch()
         right_col.addLayout(thanks_layout)
         
-        # 4. 개발현황 생성용 모델
+        # 4. 개발현황 생성
         devstatus_layout = QHBoxLayout()
         devstatus_label = QLabel("4️⃣ 개발 현황:")
-        devstatus_label.setMinimumWidth(100)
+        devstatus_label.setMinimumWidth(95)
         devstatus_layout.addWidget(devstatus_label)
         
+        self.devstatus_provider_combo = QComboBox()
+        self.devstatus_provider_combo.setMinimumWidth(85)
+        for key, info in AI_PROVIDERS.items():
+            self.devstatus_provider_combo.addItem(info["name"], key)
+        self.devstatus_provider_combo.currentIndexChanged.connect(
+            lambda: self._on_step_provider_changed("devstatus")
+        )
+        devstatus_layout.addWidget(self.devstatus_provider_combo)
+        
         self.devstatus_model_combo = QComboBox()
-        self.devstatus_model_combo.setMinimumWidth(180)
+        self.devstatus_model_combo.setMinimumWidth(150)
         self.devstatus_model_combo.currentTextChanged.connect(
-            self._on_devstatus_model_changed
+            lambda t: self._on_step_model_changed("devstatus", t)
         )
         devstatus_layout.addWidget(self.devstatus_model_combo)
         devstatus_layout.addStretch()
@@ -411,6 +450,16 @@ class MainWindow(QMainWindow):
         self.stop_btn.setEnabled(False)  # 초기에는 비활성화
         self.stop_btn.setMaximumWidth(100)
         button_layout.addWidget(self.stop_btn)
+        
+        # GPU 프로세스 종료 버튼
+        self.gpu_kill_btn = QPushButton("🔧 GPU 정리")
+        self.gpu_kill_btn.setStyleSheet(
+            "font-size: 12pt; padding: 10px; background-color: #ff9800; color: white;"
+        )
+        self.gpu_kill_btn.setToolTip("GPU를 점유하는 불필요한 프로세스를 종료합니다\n(Chrome, ChatGPT, Claude 등)")
+        self.gpu_kill_btn.clicked.connect(self._on_gpu_kill)
+        self.gpu_kill_btn.setMaximumWidth(120)
+        button_layout.addWidget(self.gpu_kill_btn)
         
         layout.addLayout(button_layout)
         
@@ -803,15 +852,13 @@ class MainWindow(QMainWindow):
             self.stop_btn.setEnabled(False)
             return
         
-        # 워커 스레드 시작 (각 단계별 모델, PDF 추출 모드, 선택된 단계 전달)
+        # 워커 스레드 시작 (단계별 제공자/모델 설정 전달)
+        step_configs = self._build_step_configs()
         self.worker = AnalysisWorker(
             self._selected_files,
             pdf_extraction_mode=pdf_extraction_mode,
-            cleaning_model=self.cleaning_model_combo.currentText(),
-            summary_model=self.summary_model_combo.currentText(),
-            thanks_model=self.thanks_model_combo.currentText(),
-            devstatus_model=self.devstatus_model_combo.currentText(),
-            selected_steps=selected_steps
+            selected_steps=selected_steps,
+            step_configs=step_configs
         )
         self.worker.progress_updated.connect(self._on_progress)
         self.worker.step_completed.connect(self._on_step_completed)
@@ -1072,6 +1119,91 @@ class MainWindow(QMainWindow):
             self.stop_btn.setEnabled(False)
             logger.info("사용자가 재분석 중지 요청")
 
+    @Slot()
+    def _on_gpu_kill(self):
+        """GPU 프로세스 종료 핸들러"""
+        import subprocess
+        import sys
+        
+        # 시스템 모니터에서 종료 가능한 프로세스 목록 가져오기
+        killable = []
+        if hasattr(self, 'system_monitor') and self.system_monitor:
+            killable = self.system_monitor.get_all_killable_processes()
+        
+        if not killable:
+            QMessageBox.information(
+                self, "GPU 정리",
+                "종료할 GPU 프로세스가 없습니다.\n"
+                "(Ollama와 시스템 프로세스는 보호됩니다)"
+            )
+            return
+        
+        # 확인 대화상자
+        process_names = [f"• {p['name']}" for p in killable]
+        msg = (
+            f"다음 {len(killable)}개 프로세스를 종료하시겠습니까?\n\n"
+            f"{chr(10).join(process_names[:10])}"
+        )
+        if len(killable) > 10:
+            msg += f"\n... 외 {len(killable) - 10}개"
+        
+        msg += "\n\n⚠️ 저장하지 않은 작업이 있으면 먼저 저장하세요."
+        
+        reply = QMessageBox.question(
+            self, "GPU 프로세스 종료",
+            msg,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        
+        # 프로세스 종료
+        killed_count = 0
+        failed_list = []
+        
+        # Windows에서 콘솔 창 숨김 설정
+        startupinfo = None
+        creationflags = 0
+        if sys.platform == 'win32':
+            startupinfo = subprocess.STARTUPINFO()
+            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            startupinfo.wShowWindow = subprocess.SW_HIDE
+            creationflags = subprocess.CREATE_NO_WINDOW
+        
+        for proc in killable:
+            try:
+                result = subprocess.run(
+                    ["taskkill", "/PID", str(proc["pid"]), "/F"],
+                    capture_output=True, text=True, timeout=5,
+                    startupinfo=startupinfo,
+                    creationflags=creationflags
+                )
+                if result.returncode == 0:
+                    killed_count += 1
+                    logger.info(f"프로세스 종료: {proc['name']} (PID: {proc['pid']})")
+                else:
+                    failed_list.append(proc["name"])
+            except Exception as e:
+                failed_list.append(proc["name"])
+                logger.warning(f"프로세스 종료 실패: {proc['name']} - {e}")
+        
+        # 결과 표시
+        if killed_count > 0:
+            result_msg = f"✅ {killed_count}개 프로세스를 종료했습니다."
+            if failed_list:
+                result_msg += f"\n\n❌ 종료 실패: {', '.join(failed_list)}"
+            
+            self.status_label.setText(f"GPU 정리 완료: {killed_count}개 종료")
+            QMessageBox.information(self, "GPU 정리 완료", result_msg)
+        else:
+            QMessageBox.warning(
+                self, "GPU 정리 실패",
+                "프로세스를 종료하지 못했습니다.\n관리자 권한이 필요할 수 있습니다."
+            )
+        
+        logger.info(f"GPU 정리 완료: {killed_count}개 종료, {len(failed_list)}개 실패")
+
     @Slot(str)
     def _on_error(self, error_msg: str):
         """오류 발생"""
@@ -1242,13 +1374,19 @@ class MainWindow(QMainWindow):
         # 개별 단계 워커 생성 및 실행
         from src.ui.single_step_worker import SingleStepWorker
         
+        # 해당 단계의 설정 가져오기
+        step_mapping = {"clean": "cleaning", "summary": "summary", "thanks": "thanks", "devstatus": "devstatus"}
+        step_key = step_mapping.get(step_type, step_type)
+        step_configs = self._build_step_configs()
+        step_config = step_configs.get(step_key, {
+            "provider": "ollama", "model": "llama3.2:latest",
+            "base_url": "http://localhost:11434", "api_key": ""
+        })
+        
         self.single_worker = SingleStepWorker(
             step_type=step_type,
             source_text=self.current_documents_text if step_type == "clean" else self.current_cleaned_text,
-            cleaning_model=self.cleaning_model_combo.currentText(),
-            summary_model=self.summary_model_combo.currentText(),
-            thanks_model=self.thanks_model_combo.currentText(),
-            devstatus_model=self.devstatus_model_combo.currentText()
+            step_config=step_config
         )
         
         # 시그널 연결
@@ -1389,60 +1527,63 @@ class MainWindow(QMainWindow):
         self.analyze_btn.setEnabled(enabled)
 
     def _load_available_models(self):
-        """사용 가능한 모델 목록 로드 (4개 콤보박스)"""
-        # 모든 콤보박스 초기화
-        combos = [
-            self.cleaning_model_combo,
-            self.summary_model_combo,
-            self.thanks_model_combo,
-            self.devstatus_model_combo
-        ]
-        for combo in combos:
-            combo.clear()
+        """사용 가능한 모델 목록 로드 (각 단계별 제공자 기준)"""
+        # 캐시 초기화
+        self._provider_models_cache = {}
         
         self.model_info_label.setText("모델 목록 로딩 중...")
         
-        # Ollama에서 모델 목록 가져오기
-        models = OllamaClient.get_available_models()
+        steps = ["cleaning", "summary", "thanks", "devstatus"]
+        connected_providers = set()
+        failed_providers = set()
         
-        if models:
-            # 모든 콤보박스에 모델 추가
-            for combo in combos:
-                combo.addItems(models)
+        for step in steps:
+            # 저장된 설정 가져오기
+            step_setting = self.settings.get_step_setting(step)
+            saved_provider = step_setting.get("provider", "ollama")
+            saved_model = step_setting.get("model", "")
             
-            # 저장된 모델 또는 기본 모델 선택
-            saved_cleaning = self.settings.cleaning_model
-            saved_summary = self.settings.summary_model
-            saved_thanks = self.settings.thanks_model
-            saved_devstatus = self.settings.devstatus_model
+            # 제공자 콤보박스 설정
+            provider_combo = getattr(self, f"{step}_provider_combo", None)
+            model_combo = getattr(self, f"{step}_model_combo", None)
             
-            # 각 콤보박스에 저장된 모델 선택
-            self._set_combo_model(self.cleaning_model_combo, saved_cleaning, models)
-            self._set_combo_model(self.summary_model_combo, saved_summary, models)
-            self._set_combo_model(self.thanks_model_combo, saved_thanks, models)
-            self._set_combo_model(self.devstatus_model_combo, saved_devstatus, models)
+            if not provider_combo or not model_combo:
+                continue
             
-            self.model_info_label.setText(f"✅ {len(models)}개 모델 사용 가능")
+            # 제공자 선택 (시그널 차단)
+            provider_combo.blockSignals(True)
+            for i in range(provider_combo.count()):
+                if provider_combo.itemData(i) == saved_provider:
+                    provider_combo.setCurrentIndex(i)
+                    break
+            provider_combo.blockSignals(False)
+            
+            # 해당 제공자의 모델 목록 가져오기
+            models = self._get_models_for_provider(saved_provider)
+            
+            # 모델 콤보박스 설정 (시그널 차단)
+            model_combo.blockSignals(True)
+            model_combo.clear()
+            
+            if models:
+                model_combo.addItems(models)
+                connected_providers.add(saved_provider)
+                # 저장된 모델 선택
+                self._set_combo_model(model_combo, saved_model, models)
+            else:
+                failed_providers.add(saved_provider)
+                model_combo.addItem("(연결 필요)")
+            
+            model_combo.blockSignals(False)
+        
+        # 상태 표시 업데이트
+        if connected_providers:
+            names = [AI_PROVIDERS[p]["name"] for p in connected_providers]
+            self.model_info_label.setText(f"✅ 연결: {', '.join(names)}")
             self.model_info_label.setStyleSheet("color: green; font-size: 9pt;")
-        else:
-            # 모델이 없으면 기본값 추가
-            default_models = [
-                "llama3.2:latest",
-                "llama3.2:1b",
-                "llama3:latest",
-                "mistral:latest",
-                "gemma:latest"
-            ]
-            for combo in combos:
-                combo.addItems(default_models)
-            
-            # 저장된 모델 선택 시도
-            self._set_combo_model(self.cleaning_model_combo, self.settings.cleaning_model, default_models)
-            self._set_combo_model(self.summary_model_combo, self.settings.summary_model, default_models)
-            self._set_combo_model(self.thanks_model_combo, self.settings.thanks_model, default_models)
-            self._set_combo_model(self.devstatus_model_combo, self.settings.devstatus_model, default_models)
-            
-            self.model_info_label.setText("⚠️ Ollama 연결 실패 또는 모델 없음")
+        elif failed_providers:
+            names = [AI_PROVIDERS[p]["name"] for p in failed_providers]
+            self.model_info_label.setText(f"⚠️ 연결 실패: {', '.join(names)}")
             self.model_info_label.setStyleSheet("color: orange; font-size: 9pt;")
     
     def _set_combo_model(self, combo: QComboBox, saved_model: str, models: list):
@@ -1472,43 +1613,97 @@ class MainWindow(QMainWindow):
             self.settings.clear_file_list()
 
     @Slot(str)
-    def _on_cleaning_model_changed(self, model_name: str):
-        """텍스트 정리용 모델 선택 변경"""
-        if model_name:
-            self.selected_cleaning_model = model_name
-            self.settings.cleaning_model = model_name
-            logger.info(f"선택된 텍스트 정리용 AI 모델: {model_name}")
+    def _on_step_provider_changed(self, step: str):
+        """단계별 AI 제공자 변경 - 해당 단계의 모델 목록 갱신"""
+        provider_combo = getattr(self, f"{step}_provider_combo", None)
+        model_combo = getattr(self, f"{step}_model_combo", None)
+        if not provider_combo or not model_combo:
+            return
+        
+        provider = provider_combo.currentData()
+        if not provider:
+            return
+        
+        # 해당 제공자의 모델 목록 로드
+        models = self._get_models_for_provider(provider)
+        
+        # 모델 콤보박스 업데이트
+        model_combo.blockSignals(True)
+        model_combo.clear()
+        if models:
+            model_combo.addItems(models)
+            # 저장된 모델이 있으면 선택
+            saved = self.settings.get_step_setting(step)
+            if saved.get("model") and saved.get("model") in models:
+                model_combo.setCurrentText(saved["model"])
+        else:
+            model_combo.addItem("(연결 필요)")
+        model_combo.blockSignals(False)
+        
+        # 설정 저장
+        current_model = model_combo.currentText()
+        if current_model and current_model != "(연결 필요)":
+            self.settings.set_step_setting(step, provider, current_model)
+        
+        logger.debug(f"단계 제공자 변경: {step} → {provider}")
+    
+    def _on_step_model_changed(self, step: str, model_name: str):
+        """단계별 모델 선택 변경"""
+        if not model_name or model_name == "(연결 필요)":
+            return
+        
+        provider_combo = getattr(self, f"{step}_provider_combo", None)
+        if provider_combo:
+            provider = provider_combo.currentData()
+            self.settings.set_step_setting(step, provider, model_name)
+            logger.debug(f"단계 모델 변경: {step} → {provider}/{model_name}")
 
-    @Slot(str)
-    def _on_summary_model_changed(self, model_name: str):
-        """회의록 생성용 모델 선택 변경"""
-        if model_name:
-            self.selected_summary_model = model_name
-            self.settings.summary_model = model_name
-            logger.info(f"선택된 회의록 생성용 AI 모델: {model_name}")
-
-    @Slot(str)
-    def _on_thanks_model_changed(self, model_name: str):
-        """감사인사 생성용 모델 선택 변경"""
-        if model_name:
-            self.selected_thanks_model = model_name
-            self.settings.thanks_model = model_name
-            logger.info(f"선택된 감사인사 생성용 AI 모델: {model_name}")
-
-    @Slot(str)
-    def _on_devstatus_model_changed(self, model_name: str):
-        """개발현황 생성용 모델 선택 변경"""
-        if model_name:
-            self.selected_devstatus_model = model_name
-            self.settings.devstatus_model = model_name
-            logger.info(f"선택된 개발현황 생성용 AI 모델: {model_name}")
-
-    @Slot(str)
-    def _on_writing_model_changed(self, model_name: str):
-        """작성용 모델 선택 변경 (레거시 호환)"""
-        if model_name:
-            self.selected_writing_model = model_name
-            self.settings.writing_model = model_name
+    def _get_models_for_provider(self, provider: str) -> list:
+        """제공자별 모델 목록 가져오기 (캐시 사용)"""
+        # 캐시 확인
+        if provider in self._provider_models_cache:
+            return self._provider_models_cache[provider]
+        
+        # 제공자 정보 가져오기
+        info = AI_PROVIDERS.get(provider, AI_PROVIDERS["ollama"])
+        base_url = f"{info['url']}:{info['port']}"
+        api_key = self.settings.get_api_key_for_provider(provider)
+        
+        # 모델 목록 가져오기
+        models = OllamaClient.get_available_models(base_url, provider, api_key)
+        
+        # 캐시 저장
+        if models:
+            self._provider_models_cache[provider] = models
+        
+        return models
+    
+    def _build_step_configs(self) -> dict:
+        """단계별 AI 설정 구성 (워커에 전달용)"""
+        step_configs = {}
+        steps = ["cleaning", "summary", "thanks", "devstatus"]
+        
+        for step in steps:
+            provider_combo = getattr(self, f"{step}_provider_combo", None)
+            model_combo = getattr(self, f"{step}_model_combo", None)
+            
+            if provider_combo and model_combo:
+                provider = provider_combo.currentData() or "ollama"
+                model = model_combo.currentText() or "llama3.2:latest"
+                
+                # 제공자 정보 가져오기
+                info = AI_PROVIDERS.get(provider, AI_PROVIDERS["ollama"])
+                base_url = f"{info['url']}:{info['port']}"
+                api_key = self.settings.get_api_key_for_provider(provider)
+                
+                step_configs[step] = {
+                    "provider": provider,
+                    "model": model,
+                    "base_url": base_url,
+                    "api_key": api_key
+                }
+        
+        return step_configs
 
     @Slot()
     def _on_edit_prompts(self):
@@ -1687,8 +1882,30 @@ class MainWindow(QMainWindow):
             )
 
     def closeEvent(self, event):
-        """창 닫기 이벤트"""
-        # 윈도우 크기/위치 저장
+        """창 닫기 이벤트 - 메모리 클리어 및 리소스 정리"""
+        import gc
+        import subprocess
+        
+        logger.info("프로그램 종료 시작 - 리소스 정리 중...")
+        
+        # 1. 실행 중인 AI 작업 중단
+        if hasattr(self, 'worker') and self.worker and self.worker.isRunning():
+            logger.info("실행 중인 워커 종료 중...")
+            self.worker.cancel()
+            self.worker.wait(3000)  # 최대 3초 대기
+        
+        if hasattr(self, 'single_worker') and self.single_worker and self.single_worker.isRunning():
+            logger.info("실행 중인 단일 워커 종료 중...")
+            self.single_worker.cancel()
+            self.single_worker.wait(3000)
+        
+        # 2. Ollama 모델 언로드 (GPU 메모리 해제)
+        self._unload_ollama_model()
+        
+        # 3. GPU 프로세스 정리 (프로그램이 실행한 것만)
+        self._cleanup_gpu_processes()
+        
+        # 4. 윈도우 크기/위치 저장
         self.settings.set_window_geometry(
             width=self.width(),
             height=self.height(),
@@ -1719,15 +1936,68 @@ class MainWindow(QMainWindow):
         
         logger.info("설정 저장 완료 (윈도우, 스플리터, PDF모드, 자동검색, 분석결과)")
         
-        # 시스템 모니터 중지
+        # 5. 시스템 모니터 중지
         if hasattr(self, 'system_monitor'):
             self.system_monitor.stop_monitoring()
         
-        # Ollama 서버는 계속 실행 (다른 용도로 사용 가능)
-        # 필요시 주석 해제:
-        # self.ollama_manager.stop_server()
+        # 6. Python 가비지 컬렉션 강제 실행
+        gc.collect()
+        logger.info("가비지 컬렉션 완료")
         
+        logger.info("프로그램 종료 완료 - 모든 리소스 정리됨")
         event.accept()
+    
+    def _unload_ollama_model(self):
+        """Ollama 모델 언로드하여 GPU 메모리 해제"""
+        import requests
+        
+        try:
+            # 현재 로드된 모델 확인
+            response = requests.get("http://localhost:11434/api/ps", timeout=5)
+            if response.status_code == 200:
+                data = response.json()
+                models = data.get("models", [])
+                
+                for model in models:
+                    model_name = model.get("name", "")
+                    if model_name:
+                        # 모델 언로드 (keep_alive=0으로 설정)
+                        logger.info(f"Ollama 모델 언로드 중: {model_name}")
+                        try:
+                            requests.post(
+                                "http://localhost:11434/api/generate",
+                                json={
+                                    "model": model_name,
+                                    "keep_alive": 0  # 즉시 언로드
+                                },
+                                timeout=10
+                            )
+                            logger.info(f"모델 언로드 완료: {model_name}")
+                        except Exception as e:
+                            logger.warning(f"모델 언로드 실패: {model_name} - {e}")
+        
+        except requests.exceptions.ConnectionError:
+            logger.debug("Ollama 서버가 실행 중이 아닙니다")
+        except Exception as e:
+            logger.warning(f"Ollama 모델 언로드 오류: {e}")
+    
+    def _cleanup_gpu_processes(self):
+        """
+        프로그램 종료 시 GPU 프로세스 정리
+        
+        주의: 이 기능은 기본적으로 비활성화되어 있습니다.
+        다른 프로그램의 GPU 프로세스를 종료하면 데이터 손실 등의 
+        문제가 발생할 수 있으므로, 이 기능은 사용하지 않는 것을 권장합니다.
+        """
+        # 설정에서 자동 정리 옵션 확인 (기본값: 비활성화)
+        auto_cleanup = getattr(self.settings, 'auto_gpu_cleanup_on_exit', False)
+        
+        if not auto_cleanup:
+            logger.debug("GPU 자동 정리 비활성화됨 (다른 프로그램 보호)")
+            return
+        
+        # 이 기능은 다른 프로그램에 영향을 줄 수 있어 비활성화 상태 유지 권장
+        logger.debug("GPU 자동 정리 기능은 안전을 위해 사용을 권장하지 않습니다")
 
     def _setup_logging(self):
         """로깅 설정"""

@@ -5,10 +5,11 @@
 ## 주요 기능
 
 - 📄 **문서 파싱**: PDF, DOCX, DOC 파일의 텍스트 자동 추출
-- 🤖 **AI 분석**: 로컬 Ollama AI를 통한 지능형 텍스트 분석
+- 🤖 **AI 분석**: 로컬 AI (Ollama / LM Studio / Jan) 지원
 - 📋 **통합 회의록**: 팀원들의 업무를 하나의 회의록으로 통합
 - 💌 **감사 인사**: 각 팀원의 업무 내용을 바탕으로 개인별 감사 인사 작성
 - 💾 **결과 저장**: 분석 결과를 DOCX 파일로 저장
+- 🔌 **다중 AI 제공자**: Ollama, LM Studio, Jan 중 선택 가능
 
 ## 사전 준비
 
@@ -16,18 +17,65 @@
 - Python 3.8 이상 필요
 - [Python 공식 웹사이트](https://www.python.org/)에서 다운로드
 
-### 2. Ollama 설치 및 실행
-본 프로그램은 로컬 AI 분석을 위해 **Ollama**를 사용합니다.
+### 2. AI 서버 설치 (택 1)
+
+본 프로그램은 로컬 AI 분석을 위해 다음 중 **하나**를 선택하여 사용합니다.
+
+#### 옵션 A: Ollama (기본)
 
 1. [Ollama 공식 웹사이트](https://ollama.ai)에서 다운로드
 2. 설치 후 터미널에서 모델 다운로드:
    ```bash
    ollama pull llama3.2
    ```
-3. Ollama 서버 실행 확인:
+3. Ollama 서버 실행:
    ```bash
    ollama serve
    ```
+4. **기본 포트**: 11434
+
+#### 옵션 B: LM Studio
+
+1. [LM Studio 공식 웹사이트](https://lmstudio.ai/)에서 다운로드
+2. 설치 후 프로그램 실행
+3. 원하는 모델 다운로드 (예: Llama 3, Mistral, Gemma 등)
+
+**서버 구동 방법:**
+```
+1. 좌측 메뉴에서 💻 Local Server 탭 클릭
+2. 사용할 모델 선택 (상단 드롭다운)
+3. Start Server 버튼 클릭
+4. 상태가 "Running on port 1234"로 표시되면 성공
+```
+
+- **기본 포트**: 1234
+- **API 키**: 불필요
+
+#### 옵션 C: Jan (⚠️ API 키 필수)
+
+1. [Jan 공식 웹사이트](https://jan.ai/)에서 다운로드
+2. 설치 후 프로그램 실행
+3. 모델 허브에서 원하는 모델 다운로드
+
+**서버 구동 방법:**
+```
+1. 좌측 하단 ⚙️ Settings 클릭
+2. Advanced Settings → Local API Server 섹션
+3. API Server 토글 ON
+4. ⚠️ API Key 항목에 키 입력 (예: jan-local-key)
+   - 반드시 입력해야 연결됩니다!
+5. Server 주소: 127.0.0.1 또는 localhost
+6. 포트: 1337 (기본값)
+7. Start Server 클릭
+```
+
+- **기본 포트**: 1337
+- **⚠️ API 키**: 필수 (프로그램에서 기본값 `jan-local-key` 사용)
+
+> 💡 **참고**: 세 가지 도구 모두 비슷한 기능을 제공합니다.
+> - **Ollama**: 가벼움, CLI 친화적
+> - **LM Studio**: GUI 친화적, 모델 관리 편리
+> - **Jan**: 채팅 UI 포함, 초보자 친화적
 
 ## 설치 방법
 
@@ -105,7 +153,31 @@ python main.py
 
 ## 사용 방법
 
-### 1. 파일 선택
+### 1. AI 제공자 및 모델 선택
+
+각 분석 단계별로 **다른 AI 제공자와 모델**을 선택할 수 있습니다:
+
+```
+🤖 AI 설정 (단계별 제공자 선택)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+1️⃣ 텍스트 정리: [Ollama ▼] [gemma3:12b ▼]
+2️⃣ 회의록 생성: [Jan    ▼] [Dark-Desires ▼]
+3️⃣ 감사 인사:   [Ollama ▼] [llama3.2 ▼]
+4️⃣ 개발 현황:   [Ollama ▼] [gemma3:12b ▼]
+```
+
+**제공자별 기본 포트:**
+- **Ollama**: 11434
+- **LM Studio**: 1234
+- **Jan**: 1337
+
+> 💡 **모델 새로고침**: 연결 실패 시 🔄 버튼을 클릭하여 재연결
+
+**설정 자동 저장:**
+- 단계별 제공자/모델 선택은 자동으로 저장됩니다
+- 프로그램 재시작 시 이전 설정이 복원됩니다
+
+### 2. 파일 선택
 - **폴더 선택**: 업무일지가 있는 폴더 선택
   - "오늘 날짜로 자동 검색" 체크: 오늘 날짜(YYMMDD)가 포함된 파일만 자동 선택
   - 체크 해제: 폴더 내 모든 PDF/DOCX 파일 표시
@@ -155,9 +227,34 @@ workflow/
 
 ## 문제 해결
 
-### Ollama 연결 오류
+### AI 서버 연결 오류
+
+#### Ollama
 - Ollama가 실행 중인지 확인: `ollama serve`
 - 모델이 다운로드되었는지 확인: `ollama list`
+- 기본 URL: `http://localhost:11434`
+
+#### LM Studio
+- LM Studio 프로그램이 실행 중인지 확인
+- **Local Server** 탭에서 서버가 시작되었는지 확인
+- 모델이 선택되어 있는지 확인 (상단 드롭다운)
+- 상태 표시: "Running on port 1234"
+- 기본 URL: `http://localhost:1234`
+
+#### Jan
+- Jan 프로그램이 실행 중인지 확인
+- Settings → **Local API Server**가 활성화되었는지 확인
+- **⚠️ API Key가 설정되어 있는지 반드시 확인**
+  - 설정한 API Key와 프로그램의 키가 일치해야 함
+  - 기본값: `jan-local-key`
+- 연결 주소: `127.0.0.1` 또는 `localhost`
+- 기본 URL: `http://localhost:1337`
+
+**Jan 연결 오류 시 체크리스트:**
+1. Settings → Local API Server → API Server 토글 ON 확인
+2. API Key 입력 확인 (빈 값이면 연결 거부)
+3. Start Server 버튼 클릭 확인
+4. 프로그램에서 🔄 모델 새로고침 클릭
 
 ### 문서 파싱 오류
 - PDF/DOCX 파일이 손상되지 않았는지 확인
@@ -171,7 +268,7 @@ workflow/
 
 - **GUI**: PySide6 (Qt for Python)
 - **문서 파싱**: PyMuPDF (PDF), python-docx (DOCX)
-- **AI**: Ollama (로컬 LLM)
+- **AI**: Ollama / LM Studio / Jan (로컬 LLM)
 - **언어**: Python 3.8+
 
 ## 라이선스

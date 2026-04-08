@@ -26,15 +26,55 @@ def get_app_data_dir() -> Path:
     app_dir.mkdir(parents=True, exist_ok=True)
     return app_dir
 
+# AI 제공자별 기본 URL/포트 설정
+AI_PROVIDERS = {
+    "ollama": {"name": "Ollama", "url": "http://localhost", "port": 11434},
+    "lm_studio": {"name": "LM Studio", "url": "http://localhost", "port": 1234, "api_key": "lm-studio"},
+    "jan": {"name": "Jan", "url": "http://localhost", "port": 1337, "api_key": "jan-local-key"},
+}
+
 # 기본 설정값
 DEFAULT_SETTINGS = {
-    # AI 모델 설정 (각 단계별 별도 선택 가능)
+    # AI 제공자 설정
+    "ai_provider": "ollama",  # "ollama", "lm_studio", "jan"
+    "provider_url": "http://localhost",
+    "provider_port": 11434,
+    "jan_api_key": "jan-local-key",  # Jan API 키
+    # AI 모델 설정 (각 단계별 별도 선택 가능) - 레거시 호환용
     "cleaning_model": "llama3.2:latest",    # 텍스트 정리용
     "summary_model": "llama3.2:latest",     # 회의록 생성용
     "thanks_model": "llama3.2:latest",      # 감사인사 생성용
     "devstatus_model": "llama3.2:latest",   # 개발현황 생성용
     # 레거시 호환성 (기존 writing_model은 summary_model로 마이그레이션)
     "writing_model": "llama3.2:latest",
+    # 제공자별 모델 설정 (제공자 변경 시 모델 유지) - 레거시
+    "provider_models": {
+        "ollama": {
+            "cleaning_model": "llama3.2:latest",
+            "summary_model": "llama3.2:latest",
+            "thanks_model": "llama3.2:latest",
+            "devstatus_model": "llama3.2:latest",
+        },
+        "lm_studio": {
+            "cleaning_model": "",
+            "summary_model": "",
+            "thanks_model": "",
+            "devstatus_model": "",
+        },
+        "jan": {
+            "cleaning_model": "",
+            "summary_model": "",
+            "thanks_model": "",
+            "devstatus_model": "",
+        }
+    },
+    # 단계별 제공자+모델 설정 (각 단계마다 다른 제공자 사용 가능)
+    "step_settings": {
+        "cleaning": {"provider": "ollama", "model": "llama3.2:latest"},
+        "summary": {"provider": "ollama", "model": "llama3.2:latest"},
+        "thanks": {"provider": "ollama", "model": "llama3.2:latest"},
+        "devstatus": {"provider": "ollama", "model": "llama3.2:latest"},
+    },
     "pdf_extraction_mode": 0,  # 0: smart, 1: layout, 2: simple
     "auto_search_today": True,
     "last_folder_path": "",
@@ -76,6 +116,8 @@ DEFAULT_SETTINGS = {
     },
     # 마지막으로 선택된 파일 목록 (프로그램 재시작 시 복원)
     "last_file_list": [],
+    # 종료 시 GPU 프로세스 자동 정리 (기본값: 비활성화 - 다른 프로그램에 영향줄 수 있음)
+    "auto_gpu_cleanup_on_exit": False,
 }
 
 
@@ -193,6 +235,221 @@ class SettingsManager:
     @devstatus_model.setter
     def devstatus_model(self, value: str) -> None:
         self.set("devstatus_model", value)
+    
+    # === AI 제공자 설정 ===
+    
+    @property
+    def ai_provider(self) -> str:
+        """현재 AI 제공자 (ollama, lm_studio, jan)"""
+        return self.get("ai_provider", DEFAULT_SETTINGS["ai_provider"])
+    
+    @ai_provider.setter
+    def ai_provider(self, value: str) -> None:
+        self.set("ai_provider", value)
+    
+    @property
+    def provider_url(self) -> str:
+        """AI 제공자 URL"""
+        return self.get("provider_url", DEFAULT_SETTINGS["provider_url"])
+    
+    @provider_url.setter
+    def provider_url(self, value: str) -> None:
+        self.set("provider_url", value)
+    
+    @property
+    def provider_port(self) -> int:
+        """AI 제공자 포트"""
+        return self.get("provider_port", DEFAULT_SETTINGS["provider_port"])
+    
+    @provider_port.setter
+    def provider_port(self, value: int) -> None:
+        self.set("provider_port", value)
+    
+    def get_provider_base_url(self) -> str:
+        """현재 AI 제공자의 전체 기본 URL 반환"""
+        return f"{self.provider_url}:{self.provider_port}"
+    
+    def set_provider(self, provider: str, url: str = None, port: int = None) -> None:
+        """AI 제공자 변경 (URL/포트 자동 설정)"""
+        if provider not in AI_PROVIDERS:
+            logger.warning(f"알 수 없는 AI 제공자: {provider}")
+            return
+        
+        defaults = AI_PROVIDERS[provider]
+        self.set_multiple({
+            "ai_provider": provider,
+            "provider_url": url or defaults["url"],
+            "provider_port": port or defaults["port"],
+        })
+        logger.info(f"AI 제공자 변경: {provider} ({self.get_provider_base_url()})")
+    
+    @property
+    def jan_api_key(self) -> str:
+        """Jan API 키"""
+        return self.get("jan_api_key", DEFAULT_SETTINGS.get("jan_api_key", ""))
+    
+    @jan_api_key.setter
+    def jan_api_key(self, value: str) -> None:
+        self.set("jan_api_key", value)
+    
+    def get_api_key_for_provider(self, provider: str = None) -> str:
+        """제공자에 맞는 API 키 반환"""
+        if provider is None:
+            provider = self.ai_provider
+        if provider == "jan":
+            return self.jan_api_key
+        if provider == "lm_studio":
+            return AI_PROVIDERS["lm_studio"].get("api_key", "lm-studio")
+        return ""
+    
+    # === 단계별 제공자+모델 설정 ===
+    
+    def get_step_setting(self, step: str) -> Dict[str, str]:
+        """
+        단계별 제공자+모델 설정 조회
+        
+        Args:
+            step: "cleaning", "summary", "thanks", "devstatus"
+            
+        Returns:
+            {"provider": str, "model": str}
+        """
+        default_step = {"provider": "ollama", "model": "llama3.2:latest"}
+        step_settings = self.get("step_settings", DEFAULT_SETTINGS.get("step_settings", {}))
+        return step_settings.get(step, default_step)
+    
+    def set_step_setting(self, step: str, provider: str, model: str) -> None:
+        """
+        단계별 제공자+모델 설정 저장
+        
+        Args:
+            step: "cleaning", "summary", "thanks", "devstatus"
+            provider: "ollama", "lm_studio", "jan"
+            model: 모델명
+        """
+        step_settings = self.get("step_settings", DEFAULT_SETTINGS.get("step_settings", {}))
+        step_settings[step] = {"provider": provider, "model": model}
+        self.set("step_settings", step_settings)
+        logger.debug(f"단계 설정 저장: {step} = {provider}/{model}")
+    
+    def get_all_step_settings(self) -> Dict[str, Dict[str, str]]:
+        """모든 단계별 설정 조회"""
+        return self.get("step_settings", DEFAULT_SETTINGS.get("step_settings", {}))
+    
+    def get_step_base_url(self, step: str) -> str:
+        """단계별 제공자의 기본 URL 반환"""
+        setting = self.get_step_setting(step)
+        provider = setting.get("provider", "ollama")
+        info = AI_PROVIDERS.get(provider, AI_PROVIDERS["ollama"])
+        return f"{info['url']}:{info['port']}"
+    
+    def get_step_api_key(self, step: str) -> str:
+        """단계별 제공자의 API 키 반환"""
+        setting = self.get_step_setting(step)
+        provider = setting.get("provider", "ollama")
+        return self.get_api_key_for_provider(provider)
+    
+    # === 제공자별 모델 설정 (레거시) ===
+    
+    def _get_provider_models(self) -> Dict[str, Dict[str, str]]:
+        """제공자별 모델 설정 전체 반환"""
+        default_models = DEFAULT_SETTINGS.get("provider_models", {})
+        return self.get("provider_models", default_models)
+    
+    def get_provider_model(self, provider: str, model_type: str) -> str:
+        """
+        특정 제공자의 특정 모델 조회
+        
+        Args:
+            provider: 제공자 ("ollama", "lm_studio", "jan")
+            model_type: 모델 유형 ("cleaning_model", "summary_model", 등)
+            
+        Returns:
+            저장된 모델명 (없으면 빈 문자열)
+        """
+        provider_models = self._get_provider_models()
+        if provider in provider_models:
+            return provider_models[provider].get(model_type, "")
+        return ""
+    
+    def set_provider_model(self, provider: str, model_type: str, model_name: str) -> None:
+        """
+        특정 제공자의 특정 모델 저장
+        
+        Args:
+            provider: 제공자 ("ollama", "lm_studio", "jan")
+            model_type: 모델 유형 ("cleaning_model", "summary_model", 등)
+            model_name: 모델명
+        """
+        provider_models = self._get_provider_models()
+        
+        # 제공자 키가 없으면 생성
+        if provider not in provider_models:
+            provider_models[provider] = {
+                "cleaning_model": "",
+                "summary_model": "",
+                "thanks_model": "",
+                "devstatus_model": "",
+            }
+        
+        provider_models[provider][model_type] = model_name
+        self.set("provider_models", provider_models)
+        logger.debug(f"제공자 모델 저장: {provider}.{model_type} = {model_name}")
+    
+    def get_current_provider_models(self) -> Dict[str, str]:
+        """
+        현재 제공자의 모든 모델 조회
+        
+        Returns:
+            {"cleaning_model": str, "summary_model": str, ...}
+        """
+        provider = self.ai_provider
+        provider_models = self._get_provider_models()
+        
+        if provider in provider_models:
+            return provider_models[provider].copy()
+        
+        # 기본값 반환
+        return {
+            "cleaning_model": "",
+            "summary_model": "",
+            "thanks_model": "",
+            "devstatus_model": "",
+        }
+    
+    def save_current_provider_models(
+        self,
+        cleaning: str = None,
+        summary: str = None,
+        thanks: str = None,
+        devstatus: str = None
+    ) -> None:
+        """
+        현재 제공자의 모델 설정 일괄 저장
+        
+        Args:
+            cleaning: 텍스트 정리용 모델
+            summary: 회의록 생성용 모델
+            thanks: 감사인사 생성용 모델
+            devstatus: 개발현황 생성용 모델
+        """
+        provider = self.ai_provider
+        provider_models = self._get_provider_models()
+        
+        if provider not in provider_models:
+            provider_models[provider] = {}
+        
+        if cleaning is not None:
+            provider_models[provider]["cleaning_model"] = cleaning
+        if summary is not None:
+            provider_models[provider]["summary_model"] = summary
+        if thanks is not None:
+            provider_models[provider]["thanks_model"] = thanks
+        if devstatus is not None:
+            provider_models[provider]["devstatus_model"] = devstatus
+        
+        self.set("provider_models", provider_models)
+        logger.info(f"현재 제공자({provider}) 모델 저장 완료")
     
     @property
     def pdf_extraction_mode(self) -> int:
@@ -545,6 +802,15 @@ class SettingsManager:
         """저장된 파일 목록 초기화"""
         self.last_file_list = []
         logger.info("파일 목록 초기화")
+    
+    @property
+    def auto_gpu_cleanup_on_exit(self) -> bool:
+        """종료 시 GPU 프로세스 자동 정리 여부"""
+        return self.get("auto_gpu_cleanup_on_exit", True)
+    
+    @auto_gpu_cleanup_on_exit.setter
+    def auto_gpu_cleanup_on_exit(self, value: bool) -> None:
+        self.set("auto_gpu_cleanup_on_exit", value)
 
 
 # 전역 설정 인스턴스

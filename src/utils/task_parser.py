@@ -26,12 +26,12 @@ class TaskData:
 class TaskParser:
     """정리된 텍스트에서 업무 데이터를 파싱하는 클래스"""
     
-    # 팀원 섹션 패턴: "########## 김종민 (2025.11.25) ##########"
+    # 팀원 섹션 패턴: "########## [이름] (YYYY.MM.DD) ##########"
     MEMBER_SECTION_PATTERN = re.compile(
         r"#{5,}\s*(.+?)\s*\((\d{4}\.\d{2}\.\d{2})\)\s*#{5,}"
     )
     
-    # 프로젝트 대분류 패턴: "[프로젝트 대분류: bright Simple]"
+    # 프로젝트 대분류 패턴: "[프로젝트 대분류: 프로젝트명]"
     PROJECT_PATTERN = re.compile(
         r"\[프로젝트 대분류:\s*(.+?)\]"
     )
@@ -304,6 +304,39 @@ def parse_tasks_from_cleaned_text(cleaned_text: str) -> List[TaskData]:
     """
     parser = TaskParser()
     return parser.parse_cleaned_text(cleaned_text)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

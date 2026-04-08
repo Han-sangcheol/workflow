@@ -28,33 +28,37 @@ class SingleStepWorker(QThread):
         self,
         step_type: str,
         source_text: str,
-        cleaning_model: str = "gemma3:4b",
-        summary_model: str = "gemma3:4b",
-        thanks_model: str = "gemma3:4b",
-        devstatus_model: str = "gemma3:4b"
+        step_config: dict = None
     ):
         """
         Args:
             step_type: 실행할 단계 ("clean", "summary", "thanks", "devstatus")
             source_text: 입력 텍스트
-            cleaning_model: 텍스트 정리용 AI 모델
-            summary_model: 회의록 생성용 AI 모델
-            thanks_model: 감사인사 생성용 AI 모델
-            devstatus_model: 개발현황 생성용 AI 모델
+            step_config: 단계별 AI 설정
+                {"provider": str, "model": str, "base_url": str, "api_key": str}
         """
         super().__init__()
         self.step_type = step_type
         self.source_text = source_text
-        self.cleaning_model = cleaning_model
-        self.summary_model = summary_model
-        self.thanks_model = thanks_model
-        self.devstatus_model = devstatus_model
+        
+        # 기본 설정
+        default_config = {
+            "provider": "ollama", "model": "llama3.2:latest",
+            "base_url": "http://localhost:11434", "api_key": ""
+        }
+        self.step_config = step_config or default_config
         self._is_cancelled = False
+        self._current_client = None  # 현재 실행 중인 AI 클라이언트 (취소용)
     
     def cancel(self):
-        """작업 취소 요청"""
+        """작업 취소 요청 - AI 클라이언트도 즉시 중단"""
         self._is_cancelled = True
         logger.info(f"SingleStepWorker 취소 요청: {self.step_type}")
+        
+        # AI 클라이언트 즉시 취소 (진행 중인 HTTP 연결 강제 종료)
+        if self._current_client is not None:
+            self._current_client.cancel()
+            logger.info("AI 클라이언트 취소 완료")
     
     def run(self):
         """워커 실행"""
@@ -81,13 +85,23 @@ class SingleStepWorker(QThread):
         if chunk:
             self.ai_thinking.emit(chunk)
     
+    def _create_client(self) -> OllamaClient:
+        """현재 단계의 AI 클라이언트 생성 및 인스턴스 변수에 저장"""
+        self._current_client = OllamaClient(
+            base_url=self.step_config["base_url"],
+            model=self.step_config["model"],
+            provider=self.step_config["provider"],
+            api_key=self.step_config["api_key"]
+        )
+        return self._current_client
+    
     def _run_clean(self):
         """텍스트 정리 실행"""
         self.progress.emit("Step 2: 텍스트 정리 중...")
         
-        client = OllamaClient(model=self.cleaning_model)
+        client = self._create_client()
         if not client.is_available():
-            self.error.emit("Ollama 서버에 연결할 수 없습니다.")
+            self.error.emit("AI 서버에 연결할 수 없습니다.")
             return
         
         result = client.clean_and_organize(
@@ -104,9 +118,9 @@ class SingleStepWorker(QThread):
         """회의록 생성 실행"""
         self.progress.emit("Step 3: 회의록 생성 중...")
         
-        client = OllamaClient(model=self.summary_model)
+        client = self._create_client()
         if not client.is_available():
-            self.error.emit("Ollama 서버에 연결할 수 없습니다.")
+            self.error.emit("AI 서버에 연결할 수 없습니다.")
             return
         
         result = client.generate_summary(
@@ -123,9 +137,9 @@ class SingleStepWorker(QThread):
         """감사인사 생성 실행"""
         self.progress.emit("Step 4: 감사인사 생성 중...")
         
-        client = OllamaClient(model=self.thanks_model)
+        client = self._create_client()
         if not client.is_available():
-            self.error.emit("Ollama 서버에 연결할 수 없습니다.")
+            self.error.emit("AI 서버에 연결할 수 없습니다.")
             return
         
         result = client.generate_thanks(
@@ -142,9 +156,9 @@ class SingleStepWorker(QThread):
         """개발 현황 생성 실행"""
         self.progress.emit("Step 5: 개발 현황 생성 중...")
         
-        client = OllamaClient(model=self.devstatus_model)
+        client = self._create_client()
         if not client.is_available():
-            self.error.emit("Ollama 서버에 연결할 수 없습니다.")
+            self.error.emit("AI 서버에 연결할 수 없습니다.")
             return
         
         result = client.generate_devstatus(

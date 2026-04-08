@@ -8,9 +8,9 @@ from typing import Optional
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
-    QProgressBar, QGroupBox
+    QProgressBar, QGroupBox, QListWidget, QListWidgetItem
 )
-from PySide6.QtCore import QTimer, Slot
+from PySide6.QtCore import QTimer, Slot, Qt
 
 from .resource_graph import ResourceGraph, MultiResourceGraph
 
@@ -205,6 +205,43 @@ class SystemMonitor(QWidget):
             gpu_info.setStyleSheet("color: gray; font-size: 8pt;")
             layout.addWidget(gpu_info)
         
+        # === GPU 프로세스 리스트 ===
+        if gpu_detected:
+            gpu_proc_group = QGroupBox("🔧 GPU 사용 프로세스")
+            gpu_proc_group.setStyleSheet("font-size: 8pt;")
+            gpu_proc_layout = QVBoxLayout(gpu_proc_group)
+            gpu_proc_layout.setSpacing(2)
+            gpu_proc_layout.setContentsMargins(5, 5, 5, 5)
+            
+            self.gpu_process_list = QListWidget()
+            self.gpu_process_list.setMaximumHeight(120)
+            self.gpu_process_list.setStyleSheet("""
+                QListWidget {
+                    font-size: 8pt;
+                    background-color: #1e1e1e;
+                    color: #d4d4d4;
+                    border: 1px solid #3c3c3c;
+                }
+                QListWidget::item {
+                    padding: 2px;
+                }
+                QListWidget::item:selected {
+                    background-color: #264f78;
+                }
+            """)
+            self.gpu_process_list.setToolTip("GPU를 사용 중인 프로세스 목록\n(Ollama, 시스템 프로세스 제외)")
+            gpu_proc_layout.addWidget(self.gpu_process_list)
+            
+            # 프로세스 수 라벨
+            self.gpu_proc_count_label = QLabel("프로세스: 0개")
+            self.gpu_proc_count_label.setStyleSheet("color: #888; font-size: 7pt;")
+            gpu_proc_layout.addWidget(self.gpu_proc_count_label)
+            
+            layout.addWidget(gpu_proc_group)
+        else:
+            self.gpu_process_list = None
+            self.gpu_proc_count_label = None
+        
         layout.addStretch()
 
     def _is_gpu_available(self) -> bool:
@@ -319,6 +356,10 @@ class SystemMonitor(QWidget):
                                     self.gpu_graphs[i].add_value(gpu_percent)
                     except Exception as e:
                         logger.debug(f"GPUtil GPU 정보 읽기 실패: {e}")
+            
+            # GPU 프로세스 리스트 업데이트 (5초마다)
+            if self.gpu_process_list is not None:
+                self._update_gpu_process_list()
         
         except Exception as e:
             logger.error(f"시스템 통계 업데이트 오류: {e}")
@@ -337,6 +378,63 @@ class SystemMonitor(QWidget):
                 background-color: {color};
             }}
         """)
+
+    def _update_gpu_process_list(self):
+        """GPU 프로세스 리스트 업데이트 (5초마다)"""
+        # 업데이트 주기 조절 (매초 호출되지만 5초마다만 실행)
+        if not hasattr(self, '_gpu_proc_update_counter'):
+            self._gpu_proc_update_counter = 0
+        
+        self._gpu_proc_update_counter += 1
+        if self._gpu_proc_update_counter < 5:  # 5초마다 업데이트
+            return
+        self._gpu_proc_update_counter = 0
+        
+        if self.gpu_process_list is None or self.nvidia_monitor is None:
+            return
+        
+        try:
+            # 종료 가능한 프로세스만 가져오기 (기존 인스턴스 사용)
+            processes = self.nvidia_monitor.get_killable_processes()
+            
+            # 리스트 업데이트
+            self.gpu_process_list.clear()
+            
+            for proc in processes:
+                # 타입에 따른 아이콘
+                type_icon = "🖥️" if proc["type"] == "G" else "⚙️" if proc["type"] == "C" else "🔷"
+                item_text = f"{type_icon} {proc['name']} (PID: {proc['pid']})"
+                
+                item = QListWidgetItem(item_text)
+                item.setData(Qt.ItemDataRole.UserRole, proc)  # 프로세스 정보 저장
+                self.gpu_process_list.addItem(item)
+            
+            # 프로세스 수 업데이트
+            if self.gpu_proc_count_label:
+                count = len(processes)
+                color = "#4CAF50" if count <= 3 else "#FF9800" if count <= 6 else "#F44336"
+                self.gpu_proc_count_label.setText(f"종료 가능: {count}개")
+                self.gpu_proc_count_label.setStyleSheet(f"color: {color}; font-size: 7pt;")
+        
+        except Exception as e:
+            logger.debug(f"GPU 프로세스 리스트 업데이트 실패: {e}")
+    
+    def get_selected_process(self) -> Optional[dict]:
+        """현재 선택된 GPU 프로세스 정보 반환"""
+        if self.gpu_process_list is None:
+            return None
+        
+        current_item = self.gpu_process_list.currentItem()
+        if current_item:
+            return current_item.data(Qt.ItemDataRole.UserRole)
+        return None
+    
+    def get_all_killable_processes(self) -> list:
+        """모든 종료 가능한 GPU 프로세스 목록 반환"""
+        if self.nvidia_monitor is None:
+            return []
+        
+        return self.nvidia_monitor.get_killable_processes()
 
     def stop_monitoring(self):
         """모니터링 중지"""
